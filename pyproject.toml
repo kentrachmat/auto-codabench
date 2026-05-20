@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "autocodabench"
+version = "0.1.0"
+description = "MCP server for authoring Codabench competition bundles entirely offline."
+readme = "auto_codabench/README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Khuong T.G. Hieu" }]
+license = "MIT"
+dependencies = [
+    "fastmcp>=2.0.0,<3.0.0",
+    "PyYAML>=6.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.3.1", "pytest-asyncio>=0.21.0"]
+
+[project.scripts]
+autocodabench-mcp-server = "auto_codabench.mcp_server.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["auto_codabench"]

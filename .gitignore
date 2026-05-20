@@ -3,3 +3,10 @@
 .DS_Store?
 ._*
 __*
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+# auto_codabench/bundles/*/
+# auto_codabench/bundles/*.zip
+logs/

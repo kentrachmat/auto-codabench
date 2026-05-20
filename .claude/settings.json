@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "semantic-scholar": {
+      "command": "/Users/<you>/miniconda3/envs/semantic-scholar/bin/python",
+      "args": ["-m", "semantic_scholar.server"],
+      "env": {
+        "SEMANTIC_SCHOLAR_API_KEY": "paste-your-key-here-or-leave-blank"
+      }
+    },
+    "autocodabench": {
+      "command": "/Users/<you>/miniconda3/envs/semantic-scholar/bin/python",
+      "args": ["-m", "auto_codabench.mcp_server.server"]
+    }
+  }
+}
