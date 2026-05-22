@@ -661,11 +661,12 @@ async def on_message(msg: cl.Message):
                 ))
         _append_transcript(run_dir, role="claude", text="".join(body_chunks))
 
-    # Refresh the side panel: notebook HTML + any spec/log files. This
-    # is the user-facing "watch the artifacts appear" signal — without
-    # it, the work happens invisibly under runs/<id>/ and the user
-    # can't track progress without leaving the chat.
-    await _refresh_side_panel(run_dir)
+    # Refresh the side panel: notebook HTML + any spec/log files.
+    # We pass response_msg so the file chips render *inline under the
+    # response*; clicking a chip slides the right drawer open with
+    # the file content. Without this, users would have to discover
+    # the sidebar via Chainlit's chrome — which is non-obvious.
+    await _refresh_side_panel(run_dir, attach_to=response_msg)
 
     # Persist the entire run_dir to a private HF Dataset, async — so a
     # slow network request doesn't block the next user turn. The user
@@ -952,6 +953,9 @@ async def _stream_one_turn(run_dir: Path, prompt_text: str) -> None:
                     is_error=part["is_error"],
                 ))
         _append_transcript(run_dir, role="claude", text="".join(body_chunks))
+    # Same side-panel refresh as the regular on_message path so the
+    # post-kickoff phase-C response also surfaces clickable chips.
+    await _refresh_side_panel(run_dir, attach_to=response_msg)
     asyncio.create_task(_persist_to_hf(run_dir))
 
 
@@ -1181,18 +1185,45 @@ def _collect_side_files(run_dir: Path) -> list["cl.Text"]:
     return elements
 
 
-async def _refresh_side_panel(run_dir: Path) -> None:
-    """Push the current file set into cl.ElementSidebar.
+async def _refresh_side_panel(run_dir: Path,
+                              attach_to: "cl.Message | None" = None) -> None:
+    """Push the current file set into the UI.
 
-    Idempotent — called after every turn. Cheap when nothing changed
-    (a few KB of HTML re-pushed); cheap enough.
+    Two-channel rendering so users always see the files:
+
+      1. **Inline chips on `attach_to`** (a recently-sent assistant
+         message). With Chainlit's `display="side"`, each `cl.Text`
+         renders as a clickable chip in that message — click it,
+         right-side drawer opens with the rendered file. This is the
+         visible signal that artifacts are accumulating.
+
+      2. **cl.ElementSidebar.set_elements** as a backup global view —
+         in Chainlit 2.11 the sidebar has a chrome-level toggle, but
+         it isn't always obvious; the inline chips are the primary
+         affordance.
+
+    Idempotent — safe to call after every turn.
     """
     try:
         elements = _collect_side_files(run_dir)
         if not elements:
             return
-        await cl.ElementSidebar.set_title("📁 Session files")
-        await cl.ElementSidebar.set_elements(elements)
+        # Channel 1 — attach to a freshly-sent assistant message so the
+        # chips appear *under* the response. Chainlit only renders
+        # element chips when the host message is updated after the
+        # elements are attached.
+        if attach_to is not None:
+            try:
+                attach_to.elements = elements
+                await attach_to.update()
+            except Exception as e:
+                log.warning("attach elements to message failed: %s", e)
+        # Channel 2 — populate the persistent ElementSidebar.
+        try:
+            await cl.ElementSidebar.set_title("📁 Session files")
+            await cl.ElementSidebar.set_elements(elements)
+        except Exception as e:
+            log.warning("ElementSidebar set failed: %s", e)
     except Exception as e:
         log.warning("side panel refresh failed: %s", e)
 
