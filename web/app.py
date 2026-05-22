@@ -187,7 +187,18 @@ def _probe_mcp_imports() -> list[str]:
     are importable. We do this in a subprocess so an ImportError in one MCP
     module can't crash the web process itself, and so the probe environment
     matches what the SDK will actually exec.
+
+    On any failure we also surface the fastmcp diagnostic line — almost
+    every MCP import error so far has traced back to a wrong fastmcp
+    version, so knowing what's actually installed is invaluable.
     """
+    diag_snippet = (
+        "import fastmcp, pathlib;"
+        "p = pathlib.Path(fastmcp.__file__).parent;"
+        "print('fastmcp', fastmcp.__version__);"
+        "print('oauth_proxy as file:', (p / 'server/auth/oauth_proxy.py').is_file());"
+        "print('oauth_proxy as pkg:', (p / 'server/auth/oauth_proxy/__init__.py').is_file())"
+    )
     probes = {
         "autocodabench": "import auto_codabench.mcp_server.server",
         "alex-mcp": "import alex_mcp.server",
@@ -205,10 +216,20 @@ def _probe_mcp_imports() -> list[str]:
             failures.append(f"`{name}`: import probe timed out after 15s")
             continue
         if result.returncode != 0:
-            # stderr is the useful part — Python tracebacks land there.
             err = (result.stderr or result.stdout or "").strip().splitlines()
             tail = "\n".join(err[-6:]) if err else "(no stderr)"
             failures.append(f"`{name}` failed to import:\n```\n{tail}\n```")
+
+    if failures:
+        try:
+            diag = subprocess.run(
+                [PYTHON_BIN, "-c", diag_snippet],
+                capture_output=True, text=True, timeout=10,
+            )
+            info = (diag.stdout or diag.stderr or "(no output)").strip()
+            failures.append(f"**runtime diagnostic:**\n```\n{info}\n```")
+        except Exception as e:
+            failures.append(f"**runtime diagnostic failed:** {e}")
     return failures
 
 

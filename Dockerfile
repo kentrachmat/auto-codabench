@@ -43,6 +43,18 @@ RUN pip install --upgrade pip && \
     pip install -r web/requirements.txt && \
     chown -R user:user /app
 
+# Belt-and-suspenders: force the exact fastmcp version that imports cleanly,
+# *after* every other install that might have pulled a transitive copy. The
+# pin in pyproject.toml + requirements.txt should already do this, but HF
+# layer-caching has bitten us before — and a stale subpackage layout in
+# `fastmcp.server.auth.oauth_proxy` makes every MCP server fail to start.
+# Echo the resolved version so it lands in the build log.
+RUN pip install --no-cache-dir --force-reinstall --no-deps fastmcp==2.14.7 && \
+    python -c "import fastmcp, pathlib; \
+print('fastmcp at build time:', fastmcp.__version__, '@', fastmcp.__file__); \
+print('oauth_proxy is:', pathlib.Path(fastmcp.__file__).parent / 'server/auth/oauth_proxy.py'); \
+print('  exists as file?', (pathlib.Path(fastmcp.__file__).parent / 'server/auth/oauth_proxy.py').is_file())"
+
 USER user
 ENV HOME=/home/user
 
