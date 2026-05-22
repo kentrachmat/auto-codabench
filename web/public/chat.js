@@ -1,6 +1,6 @@
 /* AutoCodabench chat UI tweaks (loaded as custom_js in chainlit config).
  *
- * Three responsibilities, all DOM-side only:
+ * Four responsibilities, all DOM-side only:
  *
  * 1. Inline help inside expanded tool-step panels.
  *    The agent emits each MCP call as a cl.Step. Chainlit renders it as a
@@ -15,13 +15,16 @@
  *    starts with `Running `, we append three pulsing dots. When the prefix
  *    is gone, we remove them.
  *
- * 3. Input lock during session init.
- *    on_chat_start can take 5–30s (MCP probe + SDK connect). app.py sends
- *    a loading message containing INIT_LOCK_PHRASE while it works, then
- *    updates that same message in place to the greeting (no phrase).
- *    Here we scan for the phrase; while it's present, disable the chat
- *    textarea + send button so the user can't fire a message into a
- *    session that isn't ready.
+ * 3. Init banner + input lock from the moment the page loads.
+ *    on_chat_start can take 5–30s (MCP probe + SDK connect). To avoid the
+ *    chat looking ready before the server actually is, we:
+ *      - inject a top-of-page banner the moment chat.js runs;
+ *      - lock the textarea + send button;
+ *      - keep both locked until we see READY_PHRASE in the DOM (the
+ *        first stable string of the greeting). When the greeting lands
+ *        we remove the banner and re-enable input.
+ *    The lock is opt-in for chat pages only — we gate on the textarea
+ *    existing, so the banner won't appear on the login screen.
  *
  * Chainlit re-renders aggressively, so everything below is idempotent —
  * safe to call from a MutationObserver on every DOM mutation.
@@ -29,8 +32,9 @@
 (function () {
     "use strict";
 
-    // Must match _INIT_LOCK_PHRASE in web/app.py.
-    const INIT_LOCK_PHRASE = "🔒 Initializing AutoCodabench";
+    // The first stable line of the greeting (set in web/app.py). When this
+    // appears in the DOM we know on_chat_start has finished.
+    const READY_PHRASE = "Tell me a competition idea";
 
     // Short, tool-agnostic legend inserted into each expanded step. Kept
     // compact on purpose: the user expands a tool to see the JSON, not to
@@ -45,17 +49,21 @@
       OpenAlex / PubMed / ORCID.</p>
     `;
 
+    const INIT_BANNER_HTML = `
+      <span class="ac-init-spinner" aria-hidden="true"></span>
+      <span>
+        <b>Initializing AutoCodabench…</b>
+        spinning up MCP tool servers and the literature index — this takes
+        up to 30s on first connect. Chat input is locked until ready.
+      </span>
+    `;
+
     // ---------------------------------------------------------------
     // (1) Tag step chips so CSS and inject logic have a stable hook.
     // ---------------------------------------------------------------
     function tagSteps() {
         document.querySelectorAll("button, [role='button']").forEach((el) => {
             const txt = (el.textContent || "").trim();
-            // Anything that we set as a step name starts with either
-            // "Running " (in-flight) or one of the operation labels. We
-            // can't enumerate the latter, so use "Running " as the gate
-            // for tagging on first appearance — once a chip is tagged
-            // it stays tagged even after the prefix drops.
             if (!el.dataset.acStepBtn) {
                 if (/^Running /.test(txt)) {
                     el.dataset.acStepBtn = "1";
@@ -79,7 +87,6 @@
             if (isRunning && !existing) {
                 const dots = document.createElement("span");
                 dots.className = "ac-dots";
-                // aria-hidden so screen readers don't read three dots.
                 dots.setAttribute("aria-hidden", "true");
                 dots.innerHTML = "<span>.</span><span>.</span><span>.</span>";
                 btn.appendChild(dots);
@@ -91,21 +98,12 @@
 
     // ---------------------------------------------------------------
     // (3) Inline help inside each expanded step panel.
-    //
-    // Strategy: find every step button (data-ac-step-btn) and look up
-    // its associated panel via `aria-controls` (Radix UI sets this on
-    // their Collapsible / Accordion primitives, which Chainlit uses).
-    // Inject the help as the panel's last child once, then let the
-    // browser show/hide it along with the panel.
     // ---------------------------------------------------------------
     function injectInlineHelp() {
         document.querySelectorAll("[data-ac-step-btn='1']").forEach((btn) => {
             if (btn.dataset.acHelpDone) return;
             const controlsId = btn.getAttribute("aria-controls");
             let panel = controlsId ? document.getElementById(controlsId) : null;
-            // Fallbacks for non-aria implementations: nearest expanded
-            // sibling, or the immediate next sibling of the button's
-            // parent block.
             if (!panel) {
                 panel = btn.closest("[data-step-id]")?.querySelector(
                     "[data-state='open'], [data-state='closed']"
@@ -125,60 +123,76 @@
     }
 
     // ---------------------------------------------------------------
-    // (4) Lock the chat input while the loading message is on screen.
+    // (4) Init banner + input lock, applied from the *very first*
+    //     paint so the user never sees an unlocked chat.
     //
-    // We look for the lock phrase anywhere in the page body's text.
-    // If it's there, the assistant is still initializing — disable
-    // the textarea, swap the placeholder for a "please wait" line,
-    // and mark the send button as disabled. When the loading message
-    // gets replaced by the greeting the phrase disappears, and we
-    // restore the previous state on the next observer tick.
+    // We gate the lock on `textarea` existing — the login page has no
+    // textarea, so the banner only shows after the user has signed in
+    // and the chat surface is visible.
+    //
+    // We unlock as soon as READY_PHRASE appears in the body's text.
     // ---------------------------------------------------------------
-    function syncInputLock() {
-        const locked = document.body.textContent.includes(INIT_LOCK_PHRASE);
+    function syncInitGate() {
+        const onChatPage = !!document.querySelector("textarea");
+        const isReady = document.body.textContent.includes(READY_PHRASE);
+
+        // -- banner --
+        let banner = document.getElementById("ac-init-banner");
+        if (onChatPage && !isReady) {
+            if (!banner) {
+                banner = document.createElement("div");
+                banner.id = "ac-init-banner";
+                banner.innerHTML = INIT_BANNER_HTML;
+                document.body.appendChild(banner);
+            }
+        } else if (banner) {
+            banner.remove();
+        }
+
+        if (!onChatPage) return;  // login page: skip input lock too
+
+        const locked = !isReady;
+
+        // -- textarea --
         document.querySelectorAll("textarea").forEach((el) => {
-            if (el.disabled === locked) return;  // already in the right state
-            el.disabled = locked;
-            if (locked) {
-                if (el.dataset.acPrevPlaceholder === undefined) {
-                    el.dataset.acPrevPlaceholder = el.placeholder || "";
-                }
-                el.placeholder = "Initializing — please wait (up to 30s)…";
-                el.classList.add("ac-input-locked");
-            } else if (el.dataset.acPrevPlaceholder !== undefined) {
-                el.placeholder = el.dataset.acPrevPlaceholder;
-                delete el.dataset.acPrevPlaceholder;
-                el.classList.remove("ac-input-locked");
+            if (el.disabled !== locked) {
+                el.disabled = locked;
+                el.classList.toggle("ac-input-locked", locked);
             }
         });
-        // Send / submit buttons — Chainlit doesn't expose a stable class,
-        // so target by role/aria. Be conservative: only flip state if it
-        // matches our intent.
+
+        // -- send / submit buttons -- target by role/aria; Chainlit
+        // doesn't expose a stable class. Be conservative.
         document.querySelectorAll(
             "button[type='submit'], button[aria-label*='Send' i]"
         ).forEach((el) => {
-            if (el.disabled === locked) return;
-            el.disabled = locked;
+            if (el.disabled !== locked) {
+                el.disabled = locked;
+            }
         });
     }
 
     function tick() {
+        syncInitGate();   // run first so the lock is up before anything else
         tagSteps();
         syncRunningDots();
         injectInlineHelp();
-        syncInputLock();
     }
 
+    // Apply the lock as soon as possible — ideally before React mounts
+    // the chat input. We call tick() once synchronously here, then again
+    // on DOMContentLoaded, then twice on timers to catch late mounts,
+    // then continuously via MutationObserver.
+    tick();
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", tick);
-    } else {
-        tick();
     }
+    setTimeout(tick, 200);
     setTimeout(tick, 800);
     setTimeout(tick, 2500);
-    new MutationObserver(tick).observe(document.body, {
+    new MutationObserver(tick).observe(document.documentElement, {
         childList: true,
         subtree: true,
-        characterData: true,  // so we notice name changes (Running -> done)
+        characterData: true,
     });
 })();

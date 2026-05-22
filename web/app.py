@@ -275,18 +275,14 @@ def auth_callback(username: str, password: str):
 # Per-session lifecycle
 # ---------------------------------------------------------------------------
 
-# A distinctive phrase that chat.js scans for to lock/unlock the input
-# while we run the heavy init work. Update both ends together if you
-# change this string.
-_INIT_LOCK_PHRASE = "🔒 Initializing AutoCodabench"
-
-
 @cl.on_chat_start
 async def on_chat_start():
-    # Lock the chat input until init finishes — chat.js disables the
-    # textarea while the loading message (with the lock phrase) is on
-    # screen; on_message also rejects messages while `ready` is False
-    # as a Python-side belt-and-suspenders.
+    # Lock the chat input until init finishes. The visual is provided by
+    # chat.js — it shows a top-of-page banner the moment the chat page
+    # is rendered (before this handler has even fired) and only removes
+    # the banner once the greeting (containing READY_PHRASE) lands.
+    # `ready` here is a Python-side backstop in case the JS lock is
+    # bypassed (older browser, ad-blocker, etc.).
     cl.user_session.set("ready", False)
 
     # 1. Per-session isolated run dir
@@ -300,22 +296,10 @@ async def on_chat_start():
     cl.user_session.set("session_id", session_id)
     cl.user_session.set("started_at", _utc_now())
 
-    # 2. Loading message — sent FIRST so the user sees something happen
-    # immediately. The lock phrase is what chat.js looks for to disable
-    # input. Once init is done we update the same message in place to
-    # show the greeting (the phrase disappears -> input re-enables).
-    loading_msg = cl.Message(
-        content=(
-            f"{_INIT_LOCK_PHRASE} — please wait, this takes up to 30s "
-            "(spinning up MCP tool servers and the literature index). "
-            "Chat input is locked until I'm ready."
-        ),
-        author="autocodabench",
-    )
-    await loading_msg.send()
-
-    # 3. Self-test: confirm both MCP server modules import. If broken,
-    # surface immediately so the agent doesn't run tool-less.
+    # 2. Self-test: confirm both MCP server modules import. If broken,
+    # surface immediately so the agent doesn't run tool-less. (The
+    # banner stays up until the greeting lands, so the user knows the
+    # warning isn't the entire startup state — more is coming.)
     mcp_failures = _probe_mcp_imports()
     if mcp_failures:
         await cl.Message(
@@ -328,7 +312,7 @@ async def on_chat_start():
             author="autocodabench",
         ).send()
 
-    # 4. Configure the Claude Agent SDK client
+    # 3. Configure the Claude Agent SDK client
     options = ClaudeAgentOptions(
         model=DEFAULT_MODEL,
         system_prompt=_system_prompt(),
@@ -355,16 +339,19 @@ async def on_chat_start():
     await client.connect()
     cl.user_session.set("client", client)
 
-    # 5. Replace the loading message with the greeting (drops the lock
-    # phrase -> chat.js re-enables the input on its next observer tick).
-    loading_msg.content = (
-        "**AutoCodabench — Phase 1A: proposal crystallization**\n\n"
-        "Tell me a competition idea — a sentence is enough — and I'll "
-        "explore the design space with you, citing the literature as we go.\n\n"
-        f"_session `{session_id}` · model `{DEFAULT_MODEL}` · "
-        f"budget ${MAX_USD_PER_SESSION:.2f}_"
-    )
-    await loading_msg.update()
+    # 4. Greeting — this contains READY_PHRASE ("Tell me a competition
+    # idea") which is the signal chat.js watches for to drop the banner
+    # and unlock the input. Keep that exact phrase in the first line.
+    await cl.Message(
+        content=(
+            "**AutoCodabench — Phase 1A: proposal crystallization**\n\n"
+            "Tell me a competition idea — a sentence is enough — and I'll "
+            "explore the design space with you, citing the literature as we go.\n\n"
+            f"_session `{session_id}` · model `{DEFAULT_MODEL}` · "
+            f"budget ${MAX_USD_PER_SESSION:.2f}_"
+        ),
+        author="autocodabench",
+    ).send()
 
     cl.user_session.set("ready", True)
 

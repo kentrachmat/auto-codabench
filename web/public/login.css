@@ -103,13 +103,60 @@ form:has(input[type="password"]) > *:has(> button[type="submit"]) {
 .ac-help-inline b { color: CanvasText; }
 
 
-/* (3) ----- input lock during session init -----------------------
+/* (3) ----- init banner + input lock during session startup -----
  *
- * chat.js adds `.ac-input-locked` to the textarea while the loading
- * message ("🔒 Initializing AutoCodabench…") is on screen. We grey
- * the textarea visually so it's obvious the input is dead, even on
- * browsers that don't render the disabled state strongly.
+ * chat.js injects `#ac-init-banner` the moment the chat page is
+ * rendered (before on_chat_start has even fired server-side) and
+ * keeps it up until READY_PHRASE appears. While the banner is up,
+ * the textarea also gets `.ac-input-locked`. Both go away together
+ * once the agent's greeting lands.
  */
+
+#ac-init-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 99999;            /* above the login overlay + chat content */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 14px 20px;
+    background: linear-gradient(90deg, #2563eb 0%, #7c3aed 100%);
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+    /* Slide-down on first appearance so it doesn't feel jarring. */
+    animation: ac-banner-in 0.25s ease-out;
+}
+#ac-init-banner span:not(.ac-init-spinner) {
+    max-width: 70ch;
+}
+#ac-init-banner b {
+    font-weight: 600;
+}
+
+.ac-init-spinner {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: ac-spin 0.9s linear infinite;
+}
+@keyframes ac-spin   { to { transform: rotate(360deg); } }
+@keyframes ac-banner-in {
+    from { transform: translateY(-100%); opacity: 0; }
+    to   { transform: translateY(0);     opacity: 1; }
+}
+
+/* The locked textarea — greyed + progress cursor. */
 textarea.ac-input-locked {
     opacity: 0.55;
     cursor: progress;
