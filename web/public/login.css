@@ -15,20 +15,14 @@ form:has(input[type="password"]) {
     display: flex;
     flex-direction: column;
 }
-
-/* The wrapper around the username/email-style input → push below password. */
 form:has(input[type="password"]) > *:has(input[name="email"]),
 form:has(input[type="password"]) > *:has(input[type="email"]),
 form:has(input[type="password"]) > *:has(input[type="text"][autocomplete="username"]) {
     order: 2;
 }
-
-/* The wrapper around the password input → bring above. */
 form:has(input[type="password"]) > *:has(input[type="password"]) {
     order: 1;
 }
-
-/* Submit button + anything else → keep at the bottom. */
 form:has(input[type="password"]) > button,
 form:has(input[type="password"]) > *:has(> button[type="submit"]) {
     order: 3;
@@ -36,82 +30,74 @@ form:has(input[type="password"]) > *:has(> button[type="submit"]) {
 
 
 /* ============================================================
- * Top-right control bar — toggle for all tool-detail chips.
- * Injected by web/public/chat.js. See that file for the JS
- * behavior; this section is purely visual.
+ * Chat customizations — injected by web/public/chat.js.
+ *
+ * (1) Pulsing dots after "Running <operation>" step labels.
+ * (2) Inline help inside expanded tool-step panels.
+ *
+ * Both rely on data-attributes that chat.js sets idempotently
+ * on each MutationObserver tick.
  * ============================================================ */
 
-#ac-control-bar {
-    position: fixed;
-    top: 12px;
-    right: 12px;
-    z-index: 9999;
-    max-width: min(520px, calc(100vw - 24px));
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-                 Roboto, Helvetica, Arial, sans-serif;
-    pointer-events: none; /* let the page underneath stay clickable… */
+/* (1) ----- pulsing dots ---------------------------------- */
+
+.ac-dots {
+    display: inline-block;
+    margin-left: 4px;
+    letter-spacing: 1px;
+    /* Keep the dots on the baseline; don't push the chip height. */
+    line-height: 1;
 }
-#ac-control-bar > * {
-    pointer-events: auto;  /* …but our own children are clickable */
+.ac-dots > span {
+    display: inline-block;
+    opacity: 0.25;
+    animation: ac-dot-pulse 1.2s ease-in-out infinite;
+}
+.ac-dots > span:nth-child(2) { animation-delay: 0.15s; }
+.ac-dots > span:nth-child(3) { animation-delay: 0.30s; }
+
+@keyframes ac-dot-pulse {
+    0%, 60%, 100% { opacity: 0.25; }
+    30%           { opacity: 1;    }
 }
 
-#ac-toggle {
-    display: block;
-    margin-left: auto;
-    padding: 6px 12px;
-    border-radius: 6px;
-    border: 1px solid color-mix(in oklab, currentColor 30%, transparent);
-    background: color-mix(in oklab, Canvas 90%, currentColor 5%);
-    color: inherit;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 1.2;
-    box-shadow: 0 1px 4px color-mix(in oklab, currentColor 15%, transparent);
-}
-#ac-toggle:hover {
-    background: color-mix(in oklab, Canvas 80%, currentColor 10%);
-}
+/* (2) ----- inline help block inside expanded step panel ----
+ *
+ * Readability: explicit CanvasText / Canvas tokens so the box never
+ * becomes white-on-white in light mode or black-on-black in dark
+ * mode (the previous `color: inherit` was the bug). Both tokens are
+ * the user's OS-level chrome colors — they adapt to the system
+ * theme automatically.
+ */
 
-#ac-help {
-    margin-top: 8px;
+.ac-help-inline {
+    margin: 12px 4px 4px 4px;
     padding: 12px 14px;
-    border: 1px solid color-mix(in oklab, currentColor 25%, transparent);
     border-radius: 8px;
-    background: color-mix(in oklab, Canvas 92%, currentColor 4%);
-    box-shadow: 0 2px 10px color-mix(in oklab, currentColor 20%, transparent);
+    border: 1px solid rgba(127, 127, 127, 0.35);
+    background: rgba(127, 127, 127, 0.08);
+    color: CanvasText;
     font-size: 12.5px;
-    line-height: 1.45;
-    max-height: 65vh;
-    overflow-y: auto;
+    line-height: 1.5;
+    /* Tighter on phones; otherwise the chip panel widens too much. */
+    max-width: 64ch;
 }
-#ac-help .ac-help-title {
+.ac-help-inline .ac-help-title {
     font-weight: 600;
     font-size: 13.5px;
     margin-bottom: 6px;
+    color: CanvasText;
 }
-#ac-help .ac-help-section {
-    font-weight: 600;
-    margin-top: 10px;
-    margin-bottom: 4px;
-    font-size: 12.5px;
+.ac-help-inline p {
+    margin: 6px 0;
+    color: CanvasText;
 }
-#ac-help p { margin: 6px 0; }
-#ac-help ul { margin: 4px 0 4px 18px; padding: 0; }
-#ac-help li { margin: 2px 0; }
-#ac-help code {
+.ac-help-inline code {
     font-family: "SFMono-Regular", Menlo, Consolas, monospace;
     font-size: 11.5px;
-    padding: 0 3px;
+    padding: 1px 4px;
     border-radius: 3px;
-    background: color-mix(in oklab, currentColor 8%, transparent);
+    background: rgba(127, 127, 127, 0.18);
+    color: CanvasText;
 }
-
-/* When the toggle is in "hide" mode, suppress everything we tagged as a
- * tool-step card. The :has() fallback also tries Chainlit's likely class
- * names, in case our heuristic tagger missed the host. */
-body.ac-hide-tools [data-ac-step="1"],
-body.ac-hide-tools [data-step-id],
-body.ac-hide-tools .cl-step {
-    display: none !important;
-}
+.ac-help-inline b { color: CanvasText; }

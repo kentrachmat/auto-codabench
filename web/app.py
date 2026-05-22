@@ -70,13 +70,54 @@ from claude_agent_sdk import (
 _HIDDEN_TOOLS = {"Skill", "ToolSearch", "Read", "Grep", "Glob"}
 
 
-def _friendly_tool_name(raw: str) -> str:
-    """Strip the `mcp__<server>__` prefix from MCP tool names for readability."""
-    if raw.startswith("mcp__"):
-        parts = raw.split("__", 2)
-        if len(parts) >= 3:
-            return f"{parts[1]} · {parts[2]}"
-    return raw
+# Human-readable verb phrase per MCP tool. Used in the running-step label
+# ("Running OpenAlex search…"). When a tool isn't in this map, we fall
+# back to humanising the tool's last segment.
+_OP_LABELS: dict[str, str] = {
+    "mcp__alex-mcp__search_works":              "OpenAlex search",
+    "mcp__alex-mcp__search_authors":            "OpenAlex author search",
+    "mcp__alex-mcp__autocomplete_authors":      "OpenAlex author autocomplete",
+    "mcp__alex-mcp__retrieve_author_works":     "OpenAlex retrieve works",
+    "mcp__alex-mcp__search_pubmed":             "PubMed search",
+    "mcp__alex-mcp__pubmed_author_sample":      "PubMed author sample",
+    "mcp__alex-mcp__search_orcid_authors":      "ORCID author search",
+    "mcp__alex-mcp__get_orcid_publications":    "ORCID retrieve works",
+    "mcp__autocodabench__autocodabench_open_run":              "opening session",
+    "mcp__autocodabench__autocodabench_current_run":           "verifying session",
+    "mcp__autocodabench__autocodabench_log_event":             "logging event",
+    "mcp__autocodabench__autocodabench_snapshot_spec":         "saving spec",
+    "mcp__autocodabench__autocodabench_init_bundle":           "creating bundle",
+    "mcp__autocodabench__autocodabench_write_competition_yaml":"writing competition.yaml",
+    "mcp__autocodabench__autocodabench_write_page":            "writing page",
+    "mcp__autocodabench__autocodabench_write_scoring_program": "writing scoring program",
+    "mcp__autocodabench__autocodabench_write_ingestion_program":"writing ingestion program",
+    "mcp__autocodabench__autocodabench_write_solution":        "writing solution",
+    "mcp__autocodabench__autocodabench_attach_data":           "attaching data",
+    "mcp__autocodabench__autocodabench_validate_bundle":       "validating bundle",
+    "mcp__autocodabench__autocodabench_zip_bundle":            "zipping bundle",
+    "mcp__autocodabench__autocodabench_upload_bundle":         "uploading to Codabench",
+}
+
+
+def _operation_label(tool_name: str, tool_input: dict | None) -> str:
+    """Friendly verb phrase for the step chip — derived from tool name + input.
+
+    Used in the chip's name as "Running <label>" while the call is in
+    flight, and as just "<label>" after the result arrives. For search
+    tools we also append a truncated query string so the user can see
+    what's being looked up at a glance.
+    """
+    base = _OP_LABELS.get(tool_name)
+    if base is None:
+        # Fallback: humanize the last segment (e.g. `foo_bar_baz` -> `foo bar baz`).
+        last = tool_name.split("__")[-1]
+        base = last.removeprefix("autocodabench_").replace("_", " ")
+    if isinstance(tool_input, dict) and "search" in tool_name.lower():
+        q = tool_input.get("query") or tool_input.get("q") or ""
+        q = str(q).strip()
+        if q:
+            return f"{base}: ‘{q[:40]}’"
+    return base
 from dotenv import load_dotenv
 
 # Make sure the autocodabench package is importable even when chainlit's
@@ -288,9 +329,11 @@ async def on_message(msg: cl.Message):
     response_msg = cl.Message(content="", author="autocodabench")
     await response_msg.send()
 
-    # Track open tool steps by tool_use_id so we can attach results when
-    # they come back as ToolResultBlock in a UserMessage on the next iter.
-    open_steps: dict[str, cl.Step] = {}
+    # Track open tool steps (and their op label) by tool_use_id so we can
+    # attach results when they come back as ToolResultBlock in a UserMessage
+    # on the next iter. The op label is remembered separately so we can
+    # restore it as the final chip name once the result lands.
+    open_steps: dict[str, tuple[cl.Step, str]] = {}
 
     try:
         await client.query(msg.content)
@@ -304,18 +347,20 @@ async def on_message(msg: cl.Message):
                             continue  # don't pollute the UI with agent machinery
                         # parent_id ties each tool-step to the current
                         # response message so the chip renders as a nested
-                        # collapsible under that reply (rather than as a
-                        # separate top-level card or in the right-side
-                        # chain-of-thought panel).
+                        # collapsible under that reply. The "Running <op>"
+                        # label is intentional — chat.js spots the prefix,
+                        # appends an animated `…` element, and removes it
+                        # once we drop the prefix on step.update().
+                        op = _operation_label(block.name, block.input)
                         step = cl.Step(
-                            name=f"→ {_friendly_tool_name(block.name)}",
+                            name=f"Running {op}",
                             type="tool",
                             show_input="json",
                             parent_id=response_msg.id,
                         )
                         step.input = block.input
                         await step.send()
-                        open_steps[block.id] = step
+                        open_steps[block.id] = (step, op)
                     elif isinstance(block, ThinkingBlock):
                         pass  # keep thinking text out of the UI for now
             elif isinstance(message, UserMessage):
@@ -325,9 +370,13 @@ async def on_message(msg: cl.Message):
                 blocks = message.content if isinstance(message.content, list) else []
                 for block in blocks:
                     if isinstance(block, ToolResultBlock):
-                        step = open_steps.pop(block.tool_use_id, None)
-                        if step is None:
+                        record = open_steps.pop(block.tool_use_id, None)
+                        if record is None:
                             continue
+                        step, op = record
+                        # Drop the "Running " prefix so chat.js removes the
+                        # animated dots and the chip reads as a final state.
+                        step.name = op
                         # Normalise the tool result to a string for display.
                         if isinstance(block.content, list):
                             parts = []

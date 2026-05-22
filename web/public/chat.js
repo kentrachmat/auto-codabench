@@ -1,127 +1,134 @@
-/* AutoCodabench: single top-right toggle to hide / show all tool details.
+/* AutoCodabench chat UI tweaks (loaded as custom_js in chainlit config).
  *
- * Initial state: tool details visible, no help banner shown (clean first
- * impression — user opens chat, sees only the conversation + the chips).
- * Click "Hide tool details" → chips hidden.
- * Click "Show tool details (with guide)" → chips visible + help banner
- * appears under the toggle so the user knows what each chip type means.
+ * Two responsibilities, both DOM-side only:
  *
- * Implementation notes:
- *   - Chainlit renders steps as React components; their DOM class names
- *     are not stable across versions. We tag them with data-ac-step="1"
- *     using a MutationObserver that looks for buttons whose label starts
- *     with our "→ " step-name prefix (set in app.py).
- *   - CSS in chat.css (loaded via custom_css) hides anything tagged when
- *     body.ac-hide-tools is set.
+ * 1. Inline help inside expanded tool-step panels.
+ *    The agent emits each MCP call as a cl.Step. Chainlit renders it as a
+ *    collapsible "chip" with the input/output JSON revealed on expand. We
+ *    inject a compact `<div class="ac-help-inline">` *inside* every panel
+ *    so the help is only visible when the panel is open. No corner widget.
+ *
+ * 2. Animated dots on "Running …" chips.
+ *    app.py sets the step name to `Running <operation>` while the call is
+ *    in flight and rewrites it to `<operation>` (dropping the prefix) once
+ *    the result arrives. We watch all step-chip buttons; if the label
+ *    starts with `Running `, we append three pulsing dots. When the prefix
+ *    is gone, we remove them.
+ *
+ * Chainlit re-renders aggressively, so everything below is idempotent —
+ * safe to call from a MutationObserver on every DOM mutation.
  */
 (function () {
     "use strict";
 
+    // Short, tool-agnostic legend inserted into each expanded step. Kept
+    // compact on purpose: the user expands a tool to see the JSON, not to
+    // read a wall of prose.
     const HELP_HTML = `
-    <div class="ac-help-title">What you're seeing</div>
-    <p>Each <code>→ tool</code> chip below my replies is one MCP call I made
-    to ground or save a decision. The full audit trail (raw JSON of every
-    call) is on disk under <code>auto_codabench/runs/&lt;your session&gt;/</code>.</p>
-
-    <div class="ac-help-section">autocodabench (the bundle builder)</div>
-    <ul>
-      <li><code>open_run</code> — opens this session's run directory.</li>
-      <li><code>log_event</code> — records a structured event. The <code>kind</code> tells you what kind of milestone:
-        <ul>
-          <li><b>phase_a_started</b> — proposal-crystallization phase began.</li>
-          <li><b>question_asked</b> — I just asked you a focused question.</li>
-          <li><b>ss_searched</b> — I queried OpenAlex.</li>
-          <li><b>tension_surfaced</b> — I flagged a controversy in the literature.</li>
-          <li><b>proposal_made</b> / <b>proposal_accepted</b> / <b>proposal_revised</b> — design-decision lifecycle.</li>
-          <li><b>citation_unavailable</b> — a citation I wanted didn't resolve; proposal proceeds with a <code>[citation pending]</code> mark.</li>
-          <li><b>proposal_done</b> — I wrote <code>project_proposal.md</code>.</li>
-          <li><b>iter1_done</b> — planning is done.</li>
-        </ul>
-      </li>
-      <li><code>snapshot_spec</code> — writes a file (proposal or spec) and keeps a versioned copy.</li>
-      <li><code>current_run</code> — sanity-checks that a run is open.</li>
-      <li><i>Session 2 only:</i> <code>init_bundle</code>, <code>write_competition_yaml</code>, <code>write_page</code>,
-          <code>write_scoring_program</code>, <code>write_ingestion_program</code>, <code>write_solution</code>,
-          <code>attach_data</code>, <code>validate_bundle</code>, <code>zip_bundle</code>,
-          <code>upload_bundle</code> (publishes to Codabench, returns URL).</li>
-    </ul>
-
-    <div class="ac-help-section">alex-mcp (literature lookups via OpenAlex)</div>
-    <ul>
-      <li><code>search_works</code> — paper search by topic, title, or abstract.</li>
-      <li><code>search_authors</code> / <code>autocomplete_authors</code> — find researchers.</li>
-      <li><code>retrieve_author_works</code> — all peer-reviewed works for one author.</li>
-      <li><code>search_pubmed</code> / <code>pubmed_author_sample</code> — PubMed cross-check, esp. biomed.</li>
-      <li><code>search_orcid_authors</code> / <code>get_orcid_publications</code> — ORCID lookups.</li>
-    </ul>
-
-    <p>Want to disappear all of this? Click <b>Hide tool details</b>.</p>
+      <div class="ac-help-title">What this chip is</div>
+      <p>One MCP call the agent made — input JSON above, output below.
+      The full audit trail (raw JSON of every call, plus stdout) lives on
+      disk under <code>auto_codabench/runs/&lt;your session&gt;/</code>.</p>
+      <p><b>autocodabench</b> tools write competition-bundle files and
+      structured run-events. <b>alex-mcp</b> tools look up papers in
+      OpenAlex / PubMed / ORCID.</p>
     `;
 
-    function injectControlBar() {
-        if (document.getElementById("ac-control-bar")) return;
-        const bar = document.createElement("div");
-        bar.id = "ac-control-bar";
-        bar.innerHTML = `
-            <button id="ac-toggle" type="button" aria-expanded="true"
-                title="Hide all tool-detail chips below my replies">
-                Hide tool details
-            </button>
-            <div id="ac-help" style="display:none">${HELP_HTML}</div>
-        `;
-        document.body.appendChild(bar);
-
-        // Initial state: tools visible, help hidden.
-        document.body.classList.remove("ac-hide-tools");
-
-        const btn = document.getElementById("ac-toggle");
-        const help = document.getElementById("ac-help");
-        btn.addEventListener("click", () => {
-            const hidden = document.body.classList.toggle("ac-hide-tools");
-            if (hidden) {
-                btn.textContent = "Show tool details (with guide)";
-                btn.setAttribute("aria-expanded", "false");
-                help.style.display = "none";
-            } else {
-                btn.textContent = "Hide tool details";
-                btn.setAttribute("aria-expanded", "true");
-                help.style.display = "block";  // expose the guide on first expand
-            }
-        });
-    }
-
+    // ---------------------------------------------------------------
+    // (1) Tag step chips so CSS and inject logic have a stable hook.
+    // ---------------------------------------------------------------
     function tagSteps() {
-        // Heuristic: a Chainlit Step chip is a clickable element whose
-        // label text begins with our "→ " prefix (assigned in app.py).
-        // Walk up two levels and tag the closest container so the whole
-        // card hides as one unit.
         document.querySelectorAll("button, [role='button']").forEach((el) => {
             const txt = (el.textContent || "").trim();
-            if (txt.startsWith("→ ") && !el.dataset.acStepBtn) {
-                el.dataset.acStepBtn = "1";
-                let host = el.closest("[data-step-id]")
-                    || el.parentElement?.parentElement
-                    || el.parentElement;
-                if (host) host.setAttribute("data-ac-step", "1");
+            // Anything that we set as a step name starts with either
+            // "Running " (in-flight) or one of the operation labels. We
+            // can't enumerate the latter, so use "Running " as the gate
+            // for tagging on first appearance — once a chip is tagged
+            // it stays tagged even after the prefix drops.
+            if (!el.dataset.acStepBtn) {
+                if (/^Running /.test(txt)) {
+                    el.dataset.acStepBtn = "1";
+                    const host = el.closest("[data-step-id]")
+                        || el.parentElement?.parentElement
+                        || el.parentElement;
+                    if (host) host.setAttribute("data-ac-step", "1");
+                }
             }
         });
     }
 
-    // Inject as soon as React has mounted; retry to catch reloads.
-    const tryInject = () => {
-        injectControlBar();
-        tagSteps();
-    };
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", tryInject);
-    } else {
-        tryInject();
+    // ---------------------------------------------------------------
+    // (2) Pulsing dots while the chip label starts with "Running ".
+    // ---------------------------------------------------------------
+    function syncRunningDots() {
+        document.querySelectorAll("[data-ac-step-btn='1']").forEach((btn) => {
+            const txt = (btn.textContent || "").trim();
+            const isRunning = /^Running /.test(txt);
+            const existing = btn.querySelector(".ac-dots");
+            if (isRunning && !existing) {
+                const dots = document.createElement("span");
+                dots.className = "ac-dots";
+                // aria-hidden so screen readers don't read three dots.
+                dots.setAttribute("aria-hidden", "true");
+                dots.innerHTML = "<span>.</span><span>.</span><span>.</span>";
+                btn.appendChild(dots);
+            } else if (!isRunning && existing) {
+                existing.remove();
+            }
+        });
     }
-    // Catch late-mount + ongoing message streams.
-    setTimeout(tryInject, 800);
-    setTimeout(tryInject, 2500);
-    new MutationObserver(tagSteps).observe(document.body, {
+
+    // ---------------------------------------------------------------
+    // (3) Inline help inside each expanded step panel.
+    //
+    // Strategy: find every step button (data-ac-step-btn) and look up
+    // its associated panel via `aria-controls` (Radix UI sets this on
+    // their Collapsible / Accordion primitives, which Chainlit uses).
+    // Inject the help as the panel's last child once, then let the
+    // browser show/hide it along with the panel.
+    // ---------------------------------------------------------------
+    function injectInlineHelp() {
+        document.querySelectorAll("[data-ac-step-btn='1']").forEach((btn) => {
+            if (btn.dataset.acHelpDone) return;
+            const controlsId = btn.getAttribute("aria-controls");
+            let panel = controlsId ? document.getElementById(controlsId) : null;
+            // Fallbacks for non-aria implementations: nearest expanded
+            // sibling, or the immediate next sibling of the button's
+            // parent block.
+            if (!panel) {
+                panel = btn.closest("[data-step-id]")?.querySelector(
+                    "[data-state='open'], [data-state='closed']"
+                );
+            }
+            if (!panel) {
+                panel = btn.parentElement?.nextElementSibling
+                    || btn.nextElementSibling;
+            }
+            if (!panel || panel.querySelector(":scope > .ac-help-inline")) return;
+            const help = document.createElement("div");
+            help.className = "ac-help-inline";
+            help.innerHTML = HELP_HTML;
+            panel.appendChild(help);
+            btn.dataset.acHelpDone = "1";
+        });
+    }
+
+    function tick() {
+        tagSteps();
+        syncRunningDots();
+        injectInlineHelp();
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", tick);
+    } else {
+        tick();
+    }
+    setTimeout(tick, 800);
+    setTimeout(tick, 2500);
+    new MutationObserver(tick).observe(document.body, {
         childList: true,
         subtree: true,
+        characterData: true,  // so we notice name changes (Running -> done)
     });
 })();
