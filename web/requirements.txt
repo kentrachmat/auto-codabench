@@ -16,3 +16,6 @@ aiohttp>=3.8.0
 # Used by web/app.py to upload each session's run_dir to a private HF
 # Dataset repo at the end of every turn (see _persist_to_hf).
 huggingface_hub>=0.24,<1.0
+# PDF text extraction for the Demo-B "drop a competition design doc"
+# path — see _extract_attachment_text() in web/app.py.
+pypdf>=4.0,<6.0

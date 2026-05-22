@@ -375,9 +375,13 @@ async def on_message(msg: cl.Message):
         await cl.Message(content="(no active session; please refresh)").send()
         return
 
+    # Mix in attached file contents (Demo path B: PDF / md drop).
+    augmented_text = _augment_user_message(run_dir, msg)
+
     # Persist the user's turn to a plain-text transcript right away so it's
-    # visible in run_dir even if Claude is mid-think.
-    _append_transcript(run_dir, role="user", text=msg.content)
+    # visible in run_dir even if Claude is mid-think. Include attachment
+    # text so the transcript is reproducible without the original files.
+    _append_transcript(run_dir, role="user", text=augmented_text)
 
     # Send the user's message to Claude and stream the response.
     response_msg = cl.Message(content="", author="autocodabench")
@@ -389,22 +393,24 @@ async def on_message(msg: cl.Message):
     # restore it as the final chip name once the result lands.
     open_steps: dict[str, tuple[cl.Step, str]] = {}
 
+    # Collect text + tool-call markdown for this turn so we can write a
+    # single human-readable assistant block to transcript.md at the end.
+    # Each tool call is stored by tool_use_id so when its result arrives
+    # later we can fill in the output before flushing.
+    turn_parts: list[dict] = []  # [{"kind":"text","text":...} | {"kind":"tool","id":..., "md":..., "raw_name":..., "op":..., "input":..., "output":..., "is_error":...}]
+    tool_idx_by_id: dict[str, int] = {}
+
     try:
-        await client.query(msg.content)
+        await client.query(augmented_text)
         async for message in client.receive_response():
             if isinstance(message, AssistantMessage):
                 for block in message.content:
                     if isinstance(block, TextBlock):
                         await response_msg.stream_token(block.text)
+                        turn_parts.append({"kind": "text", "text": block.text})
                     elif isinstance(block, ToolUseBlock):
                         if block.name in _HIDDEN_TOOLS:
                             continue  # don't pollute the UI with agent machinery
-                        # parent_id ties each tool-step to the current
-                        # response message so the chip renders as a nested
-                        # collapsible under that reply. The "Running <op>"
-                        # label is intentional — chat.js spots the prefix,
-                        # appends an animated `…` element, and removes it
-                        # once we drop the prefix on step.update().
                         op = _operation_label(block.name, block.input)
                         step = cl.Step(
                             name=f"Running {op}",
@@ -415,12 +421,20 @@ async def on_message(msg: cl.Message):
                         step.input = block.input
                         await step.send()
                         open_steps[block.id] = (step, op)
+                        # Reserve the slot in the transcript; result fills later.
+                        turn_parts.append({
+                            "kind":     "tool",
+                            "id":       block.id,
+                            "raw_name": block.name,
+                            "op":       op,
+                            "input":    block.input,
+                            "output":   "",
+                            "is_error": False,
+                        })
+                        tool_idx_by_id[block.id] = len(turn_parts) - 1
                     elif isinstance(block, ThinkingBlock):
-                        pass  # keep thinking text out of the UI for now
+                        pass
             elif isinstance(message, UserMessage):
-                # Tool results arrive on the next iteration; attach to the
-                # matching open step so the user sees input AND output
-                # together when they expand the chip.
                 blocks = message.content if isinstance(message.content, list) else []
                 for block in blocks:
                     if isinstance(block, ToolResultBlock):
@@ -428,10 +442,8 @@ async def on_message(msg: cl.Message):
                         if record is None:
                             continue
                         step, op = record
-                        # Drop the "Running " prefix so chat.js removes the
-                        # animated dots and the chip reads as a final state.
                         step.name = op
-                        # Normalise the tool result to a string for display.
+                        # Normalise the tool result to a string.
                         if isinstance(block.content, list):
                             parts = []
                             for c in block.content:
@@ -441,12 +453,19 @@ async def on_message(msg: cl.Message):
                                     parts.append(c["text"])
                                 else:
                                     parts.append(str(c))
-                            step.output = "\n".join(parts)
+                            out_text = "\n".join(parts)
                         else:
-                            step.output = str(block.content or "")
-                        if getattr(block, "is_error", False):
+                            out_text = str(block.content or "")
+                        is_error = bool(getattr(block, "is_error", False))
+                        if is_error:
                             step.is_error = True
+                        step.output = out_text
                         await step.update()
+                        # Fill the transcript slot reserved earlier.
+                        idx = tool_idx_by_id.get(block.tool_use_id)
+                        if idx is not None:
+                            turn_parts[idx]["output"]   = out_text
+                            turn_parts[idx]["is_error"] = is_error
             elif isinstance(message, ResultMessage):
                 # Final usage/cost summary at the end of an assistant turn.
                 cost = getattr(message, "total_cost_usd", None) or 0.0
@@ -477,8 +496,25 @@ async def on_message(msg: cl.Message):
     await response_msg.update()
 
     # Mirror the assistant's full response into the per-session transcript.
-    if response_msg.content:
-        _append_transcript(run_dir, role="claude", text=response_msg.content)
+    # We splice the streamed text and the (now-completed) tool calls into
+    # a single markdown block so the transcript reads top-to-bottom, with
+    # each tool call appearing inline in `<details>` collapsibles between
+    # the assistant's prose. This is the format colleagues will read
+    # offline (per-session run_dir / GitHub view / HF Dataset).
+    if turn_parts:
+        body_chunks: list[str] = []
+        for part in turn_parts:
+            if part["kind"] == "text":
+                body_chunks.append(part["text"])
+            else:
+                body_chunks.append(_format_tool_call_md(
+                    op=part["op"],
+                    raw_name=part["raw_name"],
+                    input_json=part["input"],
+                    output_text=part["output"],
+                    is_error=part["is_error"],
+                ))
+        _append_transcript(run_dir, role="claude", text="".join(body_chunks))
 
     # Persist the entire run_dir to a private HF Dataset, async — so a
     # slow network request doesn't block the next user turn. The user
@@ -508,13 +544,147 @@ async def on_chat_end():
 # ---------------------------------------------------------------------------
 
 def _append_transcript(run_dir: Path, *, role: str, text: str) -> None:
-    """Append a role-tagged turn to <run_dir>/transcript.md."""
+    """Append a role-tagged turn to <run_dir>/transcript.md.
+
+    Tool calls are NOT separate turns — they're embedded inside the
+    assistant turn as `<details>` collapsibles (see on_message). This
+    keeps the transcript human-readable as a single linear document
+    that renders cleanly in any markdown viewer (GitHub, VS Code,
+    Obsidian) — sharable to colleagues without rerunning the chat.
+    """
     role_header = {
         "user": "## 👤 user — ",
-        "claude": "## 🤖 claude — ",
+        "claude": "## 🤖 autocodabench — ",
     }.get(role, f"## {role} — ")
-    line = f"\n{role_header}{_utc_now()}\n\n{text}\n"
+    line = f"\n---\n\n{role_header}{_utc_now()}\n\n{text}\n"
     (run_dir / "transcript.md").open("a", encoding="utf-8").write(line)
+
+
+def _format_tool_call_md(*, op: str, raw_name: str, input_json: dict,
+                         output_text: str, is_error: bool = False) -> str:
+    """Render one tool call as a collapsed <details> block for transcript.md.
+
+    The summary line is the friendly op label; expanding reveals the
+    raw MCP tool name, the input JSON, and a truncated output. Output
+    is capped at 2000 chars in the transcript so a noisy search result
+    doesn't dominate; the full output is still on disk under
+    `tool_calls/` (written by the MCP server's @logged_tool decorator).
+    """
+    icon = "❌" if is_error else "🔧"
+    output_text = (output_text or "").strip()
+    if len(output_text) > 2000:
+        output_text = output_text[:2000] + f"\n…[truncated; full output in tool_calls/]"
+    try:
+        input_str = json.dumps(input_json, indent=2, ensure_ascii=False)
+    except Exception:
+        input_str = str(input_json)
+    return (
+        f"\n<details><summary>{icon} {op}</summary>\n\n"
+        f"`{raw_name}`\n\n"
+        f"**Input:**\n```json\n{input_str}\n```\n\n"
+        f"**Output:**\n```\n{output_text}\n```\n\n"
+        f"</details>\n"
+    )
+
+
+# ---------------------------------------------------------------------------
+# File attachments (Demo path B: user drops a competition design PDF)
+# ---------------------------------------------------------------------------
+
+_ATTACHMENT_MAX_CHARS = 60_000   # ~10 dense pages; trimmed past that
+_PDF_MIME = "application/pdf"
+
+
+def _extract_attachment_text(element) -> tuple[str, str] | None:
+    """Return (label, body_text) for one cl.File / cl.Pdf / cl.Text element.
+
+    Returns None when the element isn't textual or we can't extract.
+    Supported:
+      - PDF      → pypdf text extraction, capped at _ATTACHMENT_MAX_CHARS.
+      - .md/.txt → raw read.
+    Other binary types (images, zip, …) are skipped silently — the
+    orchestrator skill assumes text-only inputs at this stage.
+    """
+    path = getattr(element, "path", None)
+    name = getattr(element, "name", None) or (Path(path).name if path else "<unknown>")
+    mime = (getattr(element, "mime", "") or "").lower()
+    if not path or not Path(path).exists():
+        return None
+    try:
+        # PDF
+        if mime == _PDF_MIME or name.lower().endswith(".pdf"):
+            from pypdf import PdfReader
+            reader = PdfReader(path)
+            pages = []
+            for i, page in enumerate(reader.pages):
+                try:
+                    pages.append(page.extract_text() or "")
+                except Exception as e:
+                    pages.append(f"[page {i + 1}: extraction failed: {e}]")
+            body = "\n\n".join(pages).strip()
+            n_pages = len(reader.pages)
+            label = f"{name} (PDF, {n_pages} pages)"
+        # Plain text / markdown
+        elif mime in ("text/plain", "text/markdown") or name.lower().endswith((".md", ".txt")):
+            body = Path(path).read_text(encoding="utf-8", errors="replace")
+            label = f"{name} ({len(body):,} chars)"
+        else:
+            return None
+    except Exception as e:
+        log.warning("attachment extraction for %s failed: %s", name, e)
+        return None
+
+    if not body.strip():
+        return (label, "[empty after text extraction]")
+    if len(body) > _ATTACHMENT_MAX_CHARS:
+        body = body[:_ATTACHMENT_MAX_CHARS] + (
+            f"\n\n[…truncated at {_ATTACHMENT_MAX_CHARS:,} chars; "
+            f"full file on disk under run_dir/uploads/]"
+        )
+    return (label, body)
+
+
+def _augment_user_message(run_dir: Path, msg: "cl.Message") -> str:
+    """Mix in extracted attachment text so Claude sees PDF / md content.
+
+    Also copies each successfully-extracted upload into
+    `<run_dir>/uploads/<name>` so the agent could later `Read` it
+    directly (the Read tool is in `allowed_tools`).
+    """
+    elements = getattr(msg, "elements", None) or []
+    if not elements:
+        return msg.content or ""
+
+    uploads_dir = run_dir / "uploads"
+    uploads_dir.mkdir(exist_ok=True)
+    extracted_blocks: list[str] = []
+
+    for el in elements:
+        result = _extract_attachment_text(el)
+        if result is None:
+            continue
+        label, body = result
+        # Mirror the file into run_dir/uploads/ so the agent can re-read
+        # the original later via the Read tool if needed.
+        src = getattr(el, "path", None)
+        if src and Path(src).exists():
+            try:
+                shutil.copy2(src, uploads_dir / Path(src).name)
+            except Exception as e:
+                log.warning("failed to mirror %s: %s", src, e)
+        extracted_blocks.append(
+            f"<attached_document name=\"{label}\">\n{body}\n</attached_document>"
+        )
+
+    if not extracted_blocks:
+        return msg.content or ""
+
+    head = (
+        f"_The user attached {len(extracted_blocks)} document(s). The full "
+        f"extracted text is included below; treat this per orchestrator §1.6 "
+        f"(PDF intake — map onto the §1.0 roadmap, ask only for missing rows)._"
+    )
+    return f"{msg.content or ''}\n\n{head}\n\n" + "\n\n".join(extracted_blocks)
 
 
 def _log_cost(run_dir: Path, *, turn_cost: float, cumulative: float) -> None:
