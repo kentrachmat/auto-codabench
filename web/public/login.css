@@ -299,7 +299,7 @@ button[data-ac-impl-button="cancel"] {
 /* ============================================================
  * Phase pills — slim, black-background indicators that sit in the
  * Chainlit header strip, same row as Readme / New chat. Just three
- * pills (Plan / Starting Kit / Bundle); per-turn context-% and cost
+ * pills (Plan / Competition Creation); per-turn context-% and cost
  * are surfaced in each assistant turn's footer, not in the header.
  *
  * Click an active pill: no-op (you're already there).

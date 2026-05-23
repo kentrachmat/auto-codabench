@@ -234,17 +234,19 @@
     // ---------------------------------------------------------------
     // (5b) PHASE PILLS in the Chainlit header strip.
     //
-    // Three pills (Plan / Starting Kit / Bundle) injected as siblings
-    // of the existing "Readme" + "New chat" buttons in Chainlit's
-    // header. Black background, white text — pure status indicator;
+    // Two pills in web v1 (Plan / Competition Creation) injected as
+    // siblings of the existing "Readme" + "New chat" buttons in
+    // Chainlit's header. Black background — pure status indicator;
     // clicking advances or reverts. Per-turn context-% and cost are
     // surfaced inline in each assistant turn's footer (app.py), not
     // here — the header stays uncluttered.
     //
-    // Driven by polling /public/sessions/<sid>/phase_state.json.
+    // The list of pills is driven entirely by phase_state.json — adding
+    // a third phase later (or going back to the 3-phase Kit flow) only
+    // requires changes server-side; this code rebuilds whatever the
+    // server says is current. PHASE_ORDER below is unused legacy.
     // ---------------------------------------------------------------
 
-    const PHASE_ORDER = ["plan", "kit", "bundle"];
     let _lastPhasePillsSig = "";
 
     // Locate the host strip in Chainlit's chrome where the
@@ -345,10 +347,9 @@
                         const ok = confirm(
                             "Go back to " + ph.title + "?\n\n" +
                             "Everything in later phases will be discarded " +
-                            "(the kit notebook / bundle zip will be wiped " +
-                            "and regenerated when you advance again). " +
-                            "The " + ph.title + " artifact itself is " +
-                            "preserved so you can edit it.");
+                            "(the bundle zip will be wiped and regenerated " +
+                            "when you advance again). The " + ph.title +
+                            " artifact itself is preserved so you can edit it.");
                         if (!ok) return;
                         _clickHiddenPhaseNav("revert", ph.id);
                     });

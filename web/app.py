@@ -151,68 +151,50 @@ PYTHON_BIN = os.environ.get("AUTOCODABENCH_PYTHON", sys.executable)
 CONTEXT_WINDOW_TOKENS = int(os.environ.get(
     "AUTOCODABENCH_CONTEXT_WINDOW", "200000"))
 
-# Three phases, each with its own agent. The whole point of the split
-# is COST: each phase starts with no conversation history and only the
-# previous phase's locked artifact in scope. We disconnect the SDK
-# client at every boundary and build a fresh one with that phase's
-# system prompt + tool allowlist.
+# Two phases (web v1), each with its own agent. The whole point of the
+# split is COST: Phase 2 starts with no conversation history and only
+# the locked plan in scope. We disconnect the SDK client at the
+# boundary and build a fresh one with Phase 2's system prompt + tool
+# allowlist.
 #
 #   Phase 1 — PLAN   : produce specs/implementation_plan.md.
-#   Phase 2 — KIT    : read the plan, write starting_kit.ipynb.
-#   Phase 3 — BUNDLE : read the notebook, package the Codabench bundle.
+#   Phase 2 — BUNDLE : read the plan, write the Codabench bundle
+#                      (competition.yaml, scoring_program, solution,
+#                      pages), validate, zip, optionally upload.
 #
-# The user moves between phases by clicking the phase bar at the top
-# of the page. Forward advances are gated on the previous phase's
-# artifact existing; back-navigation discards downstream artifacts so
-# the next forward advance regenerates them from the (possibly edited)
-# previous artifact.
+# v1 has no intermediate notebook step. The branch
+# `try-web-ui-with-starting-kit` keeps the 3-phase version (Plan / Kit
+# / Bundle) if we want to revisit. Forward advances are gated on the
+# plan existing; back-navigation from Bundle → Plan discards the
+# bundle so a re-advance regenerates from the (possibly edited) plan.
 PHASE_PLAN   = "plan"
-PHASE_KIT    = "kit"
 PHASE_BUNDLE = "bundle"
-PHASE_ORDER  = [PHASE_PLAN, PHASE_KIT, PHASE_BUNDLE]
+PHASE_ORDER  = [PHASE_PLAN, PHASE_BUNDLE]
 PHASE_TITLE  = {
     PHASE_PLAN:   "📝 Plan",
-    PHASE_KIT:    "📓 Starting Kit",
-    PHASE_BUNDLE: "📦 Bundle",
+    PHASE_BUNDLE: "📦 Competition Creation",
 }
 PHASE_ARTIFACT = {
     PHASE_PLAN:   "specs/implementation_plan.md",
-    PHASE_KIT:    "starting_kit.ipynb",
     PHASE_BUNDLE: "bundle.zip",
 }
-# Legacy aliases for the old two-phase code. The PR removes most of the
-# direct references, but a few call sites still pass these names; keep
-# the constants pointing at the right new phase so the old code still
-# routes correctly while we finish the migration.
-PHASE_PLANNING       = PHASE_KIT
+# Legacy aliases for the (now-removed) Kit phase. A few call sites
+# still pass these names; route them to the Bundle phase so existing
+# `_on_build_bundle` shim still works.
+PHASE_PLANNING       = PHASE_PLAN
 PHASE_IMPLEMENTATION = PHASE_BUNDLE
+PHASE_KIT            = PHASE_BUNDLE   # alias for any stragglers
 
-# 8-stage notebook flow (see notebook_kernel.STAGES). Each stage gets a
-# row in the cl.TaskList that lives at the top of the chat. Stages
-# 1-7 happen during planning (proposal-style work happens here as
-# notebook cells); stage 8 packages the executed notebook into a
-# Codabench bundle. Stage 0 is design-only (no cells, no kernel use).
-STAGE_TITLES: list[tuple[str, str]] = [
-    # The original 7-row competition-design checklist. Each row maps to
-    # one section of the starting_kit.ipynb. Version 1 of the notebook
-    # contains ALL of these (generated in one pass with demo code); the
-    # user then iterates on any section.
-    ("0.roadmap",      "📐 0. Roadmap"),
-    ("1.task",         "🎯 1. Task formulation"),
-    ("2.data",         "📊 2. Data & splits"),
-    ("3.metric",       "📏 3. Metric"),
-    ("4.baseline_kit", "🤖 4. Baseline & starting kit"),
-    ("5.rules",        "📋 5. Rules"),
-    ("6.ethics",       "⚖️ 6. Ethics & dual-use"),
-    ("7.schedule",     "📅 7. Schedule & sustainability"),
-    ("8.bundle",       "🛠 8. Bundle"),
-]
+# NOTE: the 8-stage notebook flow (STAGE_TITLES + per-section progress)
+# was removed when v1 web went to 2 phases (Plan → Competition Creation,
+# no intermediate Starting Kit). The 3-phase / 9-stage code lives on
+# branch `try-web-ui-with-starting-kit` if we want to revisit.
 
 # Per-phase tool allowlists. Each phase is given the minimum set it
 # needs — narrower allowlists mean fewer tool definitions in the
 # system prompt, which cuts per-turn input tokens.
 _PLAN_TOOLS = [
-    # Phase 1 — prose plan only. No notebook, no bundle.
+    # Phase 1 — prose plan only.
     "mcp__autocodabench__autocodabench_open_run",
     "mcp__autocodabench__autocodabench_current_run",
     "mcp__autocodabench__autocodabench_log_event",
@@ -220,39 +202,21 @@ _PLAN_TOOLS = [
     "mcp__alex-mcp__*",
     "Read", "Grep", "Glob",
 ]
-_KIT_TOOLS = [
-    # Phase 2 — notebook authoring. snapshot_spec deliberately omitted
-    # so the agent can't accidentally clobber implementation_plan.md
-    # (the Phase 1 artifact is "locked" at this phase boundary).
-    "mcp__autocodabench__autocodabench_open_run",
-    "mcp__autocodabench__autocodabench_current_run",
-    "mcp__autocodabench__autocodabench_log_event",
-    "mcp__autocodabench__autocodabench_nb_init",
-    "mcp__autocodabench__autocodabench_nb_write_cell",
-    "mcp__autocodabench__autocodabench_nb_run_stage",
-    "mcp__autocodabench__autocodabench_nb_reset_to_stage",
-    "mcp__autocodabench__autocodabench_nb_render_html",
-    "mcp__autocodabench__autocodabench_nb_shutdown",
-    "mcp__alex-mcp__*",
-    "Read", "Grep", "Glob",
-]
 _BUNDLE_TOOLS = [
-    # Phase 3 — full bundle-write + optional upload. The notebook
-    # tools are still allowed in case stage 8 needs to re-render
-    # the notebook from disk; snapshot_spec is allowed for writing
-    # competition pages.
+    # Phase 2 — full bundle-write + optional upload. Reads the plan
+    # via the Read tool (locked artifact from Phase 1).
     "mcp__autocodabench__*",
     "mcp__alex-mcp__*",
     "Read", "Grep", "Glob",
 ]
 _TOOLS_BY_PHASE = {
     PHASE_PLAN:   _PLAN_TOOLS,
-    PHASE_KIT:    _KIT_TOOLS,
     PHASE_BUNDLE: _BUNDLE_TOOLS,
 }
 # Legacy aliases kept for any caller still using the old names.
-_PLANNING_TOOLS       = _KIT_TOOLS
+_PLANNING_TOOLS       = _PLAN_TOOLS
 _IMPLEMENTATION_TOOLS = _BUNDLE_TOOLS
+_KIT_TOOLS            = _BUNDLE_TOOLS  # alias for any stragglers
 
 # Per-session run dirs are uploaded to this private HF Dataset repo
 # (cost.jsonl, transcript.md, tool_calls/, specs/, events.jsonl, …).
@@ -275,12 +239,13 @@ def _resolve_skill(*candidates: str) -> Path:
     return SKILLS_ROOT / candidates[0] / "SKILL.md"
 
 
-PLAN_SKILL         = _resolve_skill("autocodabench-plan", "plan")
+PLAN_SKILL      = _resolve_skill("autocodabench-plan", "plan")
+IMPLEMENT_SKILL = _resolve_skill("autocodabench-implement")
+# Kept around for the backup branch's import compatibility; not used
+# in the 2-phase web v1 flow.
 ORCHESTRATOR_SKILL = _resolve_skill("autocodabench-orchestrator", "orchestrator")
-IMPLEMENT_SKILL    = _resolve_skill("autocodabench-implement")
 _SKILL_BY_PHASE = {
     PHASE_PLAN:   PLAN_SKILL,
-    PHASE_KIT:    ORCHESTRATOR_SKILL,
     PHASE_BUNDLE: IMPLEMENT_SKILL,
 }
 
@@ -321,44 +286,30 @@ def _system_prompt(*, phase: str = PHASE_PLAN) -> str:
             "\n\n---\n\n"
             "## Web UI runtime note (Phase 1 — Plan)\n\n"
             "You are running in the AutoCodabench web UI, Phase 1. The user "
-            "advances between phases by clicking pills in the **phase bar "
+            "advances between phases by clicking the pill in the **phase bar "
             "at the top of the page** — you cannot trigger the advance "
             "yourself.\n\n"
             "When `implementation_plan.md` is saved and you'd recommend "
             "moving on, say something like:\n\n"
             "> ✅ Plan saved. When you're ready, click **▶ Advance to "
-            "> Phase 2 — Starting Kit** in the phase bar at the top.\n\n"
+            "> Phase 2 — Competition Creation** in the phase bar at the top.\n\n"
             "Phase 2 starts with NO memory of this conversation — only the "
             "plan file. If anything important from our chat is missing from "
             "the plan, tell the user so we can revise before advancing."
         )
-    elif phase == PHASE_KIT:
-        footer = (
-            "\n\n---\n\n"
-            "## Web UI runtime note (Phase 2 — Starting Kit)\n\n"
-            "You are running in Phase 2. The plan lives at "
-            "`<run>/specs/implementation_plan.md` — read it first. You did "
-            "NOT participate in the Phase 1 conversation; the plan is your "
-            "single source of truth for the design.\n\n"
-            "Start now: `autocodabench_current_run` → "
-            "`Read('<run>/specs/implementation_plan.md')` → "
-            "`autocodabench_nb_init()` → write all 7 sections. Don't wait "
-            "for additional instructions.\n\n"
-            "When the notebook is good, suggest the user click "
-            "**▶ Advance to Phase 3 — Bundle** in the phase bar at the top."
-        )
     else:  # PHASE_BUNDLE
         footer = (
             "\n\n---\n\n"
-            "## Web UI runtime note (Phase 3 — Bundle)\n\n"
-            "You are running in Phase 3. The user reached this phase by "
-            "clicking **▶ Advance to Phase 3** in the phase bar; the kit "
-            "notebook at `<run>/starting_kit.ipynb` is locked. Execute "
-            "the autocodabench-implement skill serially in this chat — "
-            "`/agents` is not available here.\n\n"
-            "Start now: call `autocodabench_current_run`, read the "
-            "notebook + events.jsonl, then follow the autocodabench-implement "
-            "skill end-to-end. Don't wait for additional instructions."
+            "## Web UI runtime note (Phase 2 — Competition Creation)\n\n"
+            "You are running in the terminal phase. The user reached this "
+            "phase by clicking **▶ Advance to Phase 2** in the phase bar; "
+            "the plan at `<run>/specs/implementation_plan.md` is locked. "
+            "Execute the autocodabench-implement skill serially in this "
+            "chat — `/agents` is not available here.\n\n"
+            "Start now: call `autocodabench_current_run`, read the plan, "
+            "then follow the autocodabench-implement skill end-to-end "
+            "(generate bundle files → validate → zip). Don't wait for "
+            "additional instructions."
         )
     return base + footer
 
@@ -562,15 +513,8 @@ async def on_chat_start():
     await client.connect()
     cl.user_session.set("client", client)
 
-    # 3b. Stage-progress is displayed as an in-chat message ("Starting
-    # Kit development progress"), not the right-side cl.TaskList. The
-    # right sidebar was confusing — users didn't know the rows meant
-    # notebook sections. Progress lives in the conversation flow now.
-    # Created lazily on the first build event (see _refresh_progress).
-    cl.user_session.set("progress_msg", None)
-    cl.user_session.set("section_status", {})       # stage_id -> "ready|running|done|failed"
-    cl.user_session.set("events_cursor", 0)         # byte offset into events.jsonl
-    cl.user_session.set("show_progress", False)
+    # (Per-section progress tracking was removed with the 8-stage
+    # notebook flow. Phase 2 runs as a single agent + tool-chip stream.)
 
     # 4. Greeting — this contains READY_PHRASE ("Tell me a competition
     # idea") which is the signal chat.js watches for to drop the banner
@@ -584,22 +528,21 @@ async def on_chat_start():
             "explore the design space with you, citing the literature as "
             "we go. You can also drop a PDF / markdown design doc and I'll "
             "fill in only the gaps.\n\n"
-            "### How this app works — 3 phases\n\n"
+            "### How this app works — 2 phases\n\n"
             "**1. 📝 Plan** *(you are here)* — short roadmap conversation; "
-            "I save a one-page `implementation_plan.md`. Pure prose, no "
-            "code.\n\n"
-            "**2. 📓 Starting Kit** — a fresh agent reads the locked plan "
-            "and builds the full `starting_kit.ipynb` (all 7 design "
-            "sections + working demo code). Per-section refinement here.\n\n"
-            "**3. 📦 Bundle** — another fresh agent packages the executed "
-            "notebook into a Codabench `.zip`. Optional one-click upload.\n\n"
-            "**Phase bar at the top** drives navigation. Each phase starts "
-            "with a clean context (no memory of the previous chat — just "
-            "the locked artifact). That's the cost-savings mechanism. "
-            "Click 🔒 on a previous phase to revise it (discards everything "
-            "downstream).\n\n"
-            "The panel on the right holds the live notebook + transcript + "
-            "cost + specs tabs.\n\n"
+            "I save a one-page `implementation_plan.md` covering task, "
+            "data, metric, baseline, rules, ethics, schedule. Pure prose, "
+            "no code. Review it in the workspace panel on the right.\n\n"
+            "**2. 📦 Competition Creation** — a fresh agent reads the "
+            "locked plan and packages a Codabench `.zip` directly: "
+            "`competition.yaml`, `scoring_program/`, `solution/`, pages. "
+            "Optional one-click upload that returns the Codabench URL.\n\n"
+            "**Phase bar at the top** drives navigation. Phase 2 starts "
+            "with a clean context (no memory of the chat — just the "
+            "locked plan). That's the cost-savings mechanism. Click 🔒 "
+            "on Phase 1 to revise the plan (discards the bundle).\n\n"
+            "The panel on the right holds the plan + transcript + cost "
+            "tabs; bundle.zip appears there too once Phase 2 finishes.\n\n"
             f"_session `{session_id}` · model `{DEFAULT_MODEL}` · "
             f"budget ${MAX_USD_PER_SESSION:.2f}_"
         ),
@@ -608,10 +551,10 @@ async def on_chat_start():
 
     cl.user_session.set("ready", True)
 
-    # Pre-write a placeholder notebook.html + manifest.json so the
-    # right panel has something to load on first render — even before
-    # the user's first message arrives. Phase state too, so the phase
-    # bar in chat.js can paint immediately.
+    # Pre-write a placeholder plan.html + manifest.json so the right
+    # panel has something to load on first render — even before the
+    # user's first message arrives. Phase state too, so the phase
+    # pills in chat.js can paint immediately.
     _write_public_artifacts(run_dir, session_id)
     _write_phase_state(run_dir, session_id)
     # Stand up the hidden phase-controls message so chat.js has
@@ -848,9 +791,7 @@ async def on_message(msg: cl.Message):
     # Keep the hidden phase-controls message current so chat.js can
     # find the right buttons to simulate-click from pill clicks.
     await _refresh_phase_controls()
-    # Update the in-chat "Starting Kit development progress" message.
-    await _refresh_task_list(run_dir)
-    # If stage 8 just produced a bundle, offer download + upload once.
+    # If Phase 2 just produced a bundle, offer download + upload once.
     await _maybe_offer_bundle_actions()
 
     # Persist the entire run_dir to a private HF Dataset, async — so a
@@ -858,200 +799,11 @@ async def on_message(msg: cl.Message):
     # closing the tab mid-turn means we lose at most one turn's data.
     asyncio.create_task(_persist_to_hf(run_dir))
 
-    # Per-stage approval gates fire from inside _refresh_task_list when
-    # a stage transitions to DONE — see below.
-
 
 # ---------------------------------------------------------------------------
-# Per-stage approval gates (replaces the legacy single-button switch)
-#
-# After every stage transitions to DONE (via `stage_done` /
-# `stage_approved` events), we show a small cl.AskActionMessage with
-# three actions: Approve & advance, Revise this stage, Save & exit.
-# Stage 7 (Diagnostics) is special — its Approve action does the
-# planning→implementation phase switch (rebuild SDK client with bundle
-# tools) and kicks off stage 8 (Bundle packaging).
-#
-# Stages 0 (Roadmap) and 8 (Bundle) don't fire gates: stage 0 is
-# design-only with no executable cells; stage 8 is the terminal
-# packaging step and presents a download link directly.
-#
-# Pre-PR4 backstop: if the agent (still on the prose-proposal flow)
-# writes `implementation_plan.md`, we treat that as equivalent to
-# stage 7 being done and offer the same gate path. Once PR4's skill
-# rewrite ships, the agent emits real stage events and this fallback
-# stops firing in practice.
+# Bundle-stage gate (Phase 2 → user click → upload to Codabench)
 # ---------------------------------------------------------------------------
 
-# Index for STAGE_TITLES so payloads stay machine-readable.
-_STAGE_BY_ID:   dict[str, int]  = {sid: i for i, (sid, _) in enumerate(STAGE_TITLES)}
-_STAGE_BY_IDX:  dict[int, str]  = {i: sid for i, (sid, _) in enumerate(STAGE_TITLES)}
-_STAGE_TITLE:   dict[str, str]  = {sid: title for sid, title in STAGE_TITLES}
-
-
-def _stage_at(i: int) -> tuple[str, str] | None:
-    if 0 <= i < len(STAGE_TITLES):
-        return STAGE_TITLES[i]
-    return None
-
-
-async def _maybe_offer_stage_gate(run_dir: Path, stage: str) -> None:
-    """Phase 2 only: open the section-picker after a writing pass.
-
-    In the 3-phase model, the bundle decision is made at the phase bar
-    (Advance to Phase 3), not at this gate. We keep the Refine /
-    Save & exit affordances and *also* mention the Advance pill so the
-    user knows where to go next.
-
-    The new flow (per user direction 2026-05-23): the agent generates
-    the FULL starting_kit.ipynb — all 7 design sections + demo code —
-    in one pass during stage 1 (and progressively logs `stage_done`
-    for each section as it goes). When the LAST design section
-    (`7.schedule`) lands, we surface ONE gate with:
-
-      - 7 [Refine <section>] buttons (one per design section)
-      - 1 [✅ Build the Codabench bundle] button
-      - 1 [🛑 Save & exit] button
-
-    No per-section Approve/Revise treadmill — the user picks what to
-    refine, or accepts the whole thing and builds the bundle.
-
-    Sub-iterations re-open the same gate when the refined section's
-    `stage_done` fires; the `gates_offered` set is keyed by a marker
-    rather than per-stage so the gate can re-appear after each
-    refinement.
-    """
-    if cl.user_session.get("phase") != PHASE_KIT:
-        return
-
-    # Don't gate on `0.roadmap` (design talk only) or `8.bundle`
-    # (terminal packaging) — but ANY of 1-7 going DONE is a signal
-    # that the notebook now has content worth offering choices over.
-    si = _STAGE_BY_ID.get(stage, -1)
-    if si < 1 or si > 7:
-        return
-
-    # The gate is offered once per "writing pass" — keyed by a
-    # session-incremented marker rather than per-stage. Each pass
-    # of agent-writes-things ends with the user choosing the next
-    # step; refining a section starts a new pass.
-    pass_id = cl.user_session.get("gate_pass_id", 0)
-    gates: set = cl.user_session.get("gates_offered") or set()
-    marker = f"pass:{pass_id}"
-    if marker in gates:
-        return
-    gates = set(gates)
-    gates.add(marker)
-    cl.user_session.set("gates_offered", gates)
-
-    actions: list[cl.Action] = []
-    # One Refine button per design section that has any cells in the
-    # notebook. We look at the notebook on disk so we don't list
-    # buttons for sections the agent hasn't written yet.
-    nb_path = run_dir / "starting_kit.ipynb"
-    sections_present: set[str] = set()
-    if nb_path.is_file():
-        try:
-            import nbformat
-            nb = nbformat.read(nb_path, as_version=4)
-            for c in nb.cells:
-                s = (c.get("metadata") or {}).get("autocodabench_stage")
-                if s:
-                    sections_present.add(s)
-        except Exception:
-            pass
-    for sid, title in STAGE_TITLES:
-        si2 = _STAGE_BY_ID[sid]
-        if si2 < 1 or si2 > 7:
-            continue
-        if sid not in sections_present:
-            continue
-        actions.append(cl.Action(
-            name="ac_section_refine",
-            payload={"section": sid},
-            label=f"✏️ Refine {title}",
-            tooltip=f"Restart the kernel, reset {title}'s cells, ask "
-                    f"the agent what to refine.",
-        ))
-
-    actions.append(cl.Action(
-        name="ac_build_bundle",
-        payload={},
-        label="✅ Approve all & advance to Phase 3 — Bundle",
-        tooltip="Same as clicking ▶ Advance to Phase 3 in the phase bar. "
-                "Rebuilds the agent with bundle-write tools and discards "
-                "the kit-phase chat history.",
-    ))
-    actions.append(cl.Action(
-        name="ac_stage_save_exit",
-        payload={"stage": stage, "stage_index": si},
-        label="🛑 Save & exit",
-        tooltip="End the session, keep the run dir + HF Dataset upload.",
-    ))
-
-    if sections_present == {"1.task", "2.data", "3.metric", "4.baseline_kit",
-                            "5.rules", "6.ethics", "7.schedule"}:
-        headline = ("## ✅ Notebook v1 — all 7 sections drafted\n\n"
-                    "Look at the panel on the right: the executed "
-                    "`starting_kit.ipynb` has all 7 design sections "
-                    "with demo code that ran end-to-end. From here:")
-    else:
-        nice = ", ".join(sorted(sections_present))
-        headline = (f"## ⏵ Drafted sections: {nice}\n\n"
-                    f"The agent paused after writing some sections. "
-                    f"Pick what to do next:")
-
-    await cl.Message(
-        author="autocodabench",
-        content=(
-            f"{headline}\n\n"
-            f"- **Refine a section** — restart its kernel state and "
-            f"  rewrite cells; the rest of the notebook stays put.\n"
-            f"- **Approve all & build the Codabench bundle** — package "
-            f"  what's in the notebook now into a `.zip`. Stage 8 runs "
-            f"  automatically and adds the bundle to the file panel.\n"
-            f"- **Save & exit** — keep everything as-is, upload to the "
-            f"  HF Dataset, end the session.\n"
-        ),
-        actions=actions,
-    ).send()
-
-
-async def _refresh_legacy_bundle_gate(run_dir: Path) -> None:
-    """Pre-PR4 fallback: treat implementation_plan.md as section-7-done.
-
-    Older sessions (built against the prose proposal/specs flow) write
-    `implementation_plan.md` at the end. We map that onto the new
-    section-picker gate so legacy sessions still expose the build-bundle
-    affordance.
-    """
-    if cl.user_session.get("phase") != PHASE_KIT:
-        return
-    candidates = [
-        run_dir / "specs" / "implementation_plan.md",
-        run_dir / "implementation_plan.md",
-    ]
-    latest = RUNS_ROOT / "LATEST"
-    if latest.exists():
-        try:
-            latest_resolved = latest.resolve()
-        except OSError:
-            latest_resolved = None
-        if latest_resolved and latest_resolved != run_dir.resolve():
-            candidates.extend([
-                latest_resolved / "specs" / "implementation_plan.md",
-                latest_resolved / "implementation_plan.md",
-            ])
-    plan = next((p for p in candidates if p.is_file()), None)
-    if plan is None:
-        return
-    effective = plan.parent if plan.parent.name == "specs" else plan.parent
-    if effective.resolve() != run_dir.resolve():
-        log.warning("legacy bundle gate: plan in %s, pivoting from %s", effective, run_dir)
-        cl.user_session.set("run_dir", str(effective))
-        run_dir = effective
-    # Use the most-meaningful design section as the trigger for the gate.
-    await _maybe_offer_stage_gate(run_dir, "7.schedule")
 
 
 # ---------------------------------------------------------------------------
@@ -1145,56 +897,11 @@ async def _on_upload_codabench(action: cl.Action):
         pass
 
 
-@cl.action_callback("ac_section_refine")
-async def _on_section_refine(action: cl.Action):
-    """User picked a section to refine — open a new writing pass."""
-    p = action.payload or {}
-    section = p.get("section", "")
-    run_dir = Path(cl.user_session.get("run_dir"))
-    si = _STAGE_BY_ID.get(section, -1)
-    if si < 1 or si > 7:
-        return
-
-    # Open a new "pass" so the next stage_done fires a fresh gate.
-    cl.user_session.set("gate_pass_id",
-                        int(cl.user_session.get("gate_pass_id", 0)) + 1)
-
-    # Bump this section back to "running" in the in-chat progress.
-    section_status: dict[str, str] = dict(cl.user_session.get("section_status") or {})
-    if section in section_status:
-        section_status[section] = "running"
-    cl.user_session.set("section_status", section_status)
-    progress_msg = cl.user_session.get("progress_msg")
-    if progress_msg is not None:
-        progress_msg.content = _render_progress_markdown(section_status)
-        try:
-            await progress_msg.update()
-        except Exception:
-            pass
-
-    title = _STAGE_TITLE.get(section, section)
-    _append_transcript(run_dir, role="user",
-                       text=f"[ui] Refine {title}.")
-    await _stream_one_turn(
-        run_dir,
-        f"The user clicked **Refine {title}** (section `{section}`). "
-        f"Do this NOW, in order: "
-        f"(1) call `autocodabench_nb_reset_to_stage(stage='{section}')` "
-        f"to restart the kernel and re-execute earlier sections, "
-        f"(2) ask the user in ONE short paragraph what specifically "
-        f"they want different about this section — don't rewrite "
-        f"cells until they reply, "
-        f"(3) when they answer, rewrite the cells for `{section}` "
-        f"and `nb_run_stage('{section}')`, "
-        f"(4) log `stage_done` with payload {{\"stage\":\"{section}\"}} "
-        f"so the section-picker gate re-opens.",
-    )
-
-
 @cl.action_callback("ac_build_bundle")
 async def _on_build_bundle(action: cl.Action):
-    """Legacy: 'Approve all & build bundle' button — same effect as
-    clicking Advance to Phase 3 in the phase bar."""
+    """Legacy alias — equivalent to clicking ▶ Advance to Phase 2 in
+    the phase bar. Retained because a stale rendered chat message may
+    still hold the old button label."""
     await _advance_to_phase(PHASE_BUNDLE)
 
 
@@ -1206,17 +913,15 @@ async def _on_build_bundle(action: cl.Action):
 # the entire cost-savings mechanism of the 3-phase split.
 # ---------------------------------------------------------------------------
 
-def _reset_kit_session_state() -> None:
+def _reset_phase_session_state() -> None:
     """Wipe per-phase ephemeral state (used on every phase transition)."""
     cl.user_session.set("last_input_tokens", 0)
     cl.user_session.set("last_output_tokens", 0)
-    cl.user_session.set("section_status", {})
-    cl.user_session.set("progress_msg", None)
-    cl.user_session.set("events_cursor", 0)
-    cl.user_session.set("show_progress", False)
-    cl.user_session.set("gates_offered", set())
-    cl.user_session.set("gate_pass_id", 0)
     cl.user_session.set("bundle_actions_offered", False)
+
+
+# Legacy alias for any caller still using the old name.
+_reset_kit_session_state = _reset_phase_session_state
 
 
 def _delete_phase_artifact(run_dir: Path, phase: str) -> None:
@@ -1228,14 +933,10 @@ def _delete_phase_artifact(run_dir: Path, phase: str) -> None:
     not blank.
     """
     try:
-        if phase == PHASE_KIT:
-            nb = run_dir / "starting_kit.ipynb"
-            if nb.is_file():
-                nb.unlink()
-        elif phase == PHASE_BUNDLE:
-            # The agent's zip_bundle writes into auto_codabench/bundles/<slug>/.
-            # We don't track the slug here — nuke any zips that exist so
-            # the next bundle phase regenerates them.
+        if phase == PHASE_BUNDLE:
+            # The agent's zip_bundle writes into
+            # auto_codabench/bundles/<slug>/. We don't track the slug
+            # here — nuke any zips so the next bundle phase regenerates.
             bundles_root = REPO_ROOT / "auto_codabench" / "bundles"
             if bundles_root.is_dir():
                 for d in bundles_root.iterdir():
@@ -1348,37 +1049,30 @@ async def _revert_to_phase(target: str) -> None:
 
 
 async def _send_phase_kickoff(run_dir: Path, target: str) -> None:
-    """User-facing greeting + agent kickoff prompt for a forward advance."""
-    if target == PHASE_KIT:
+    """User-facing greeting + agent kickoff prompt for a forward advance.
+
+    v1 has only one forward transition (Plan → Bundle); the Bundle
+    agent reads the plan directly and packages from there."""
+    if target == PHASE_BUNDLE:
         await cl.Message(
             author="autocodabench",
             content=(
-                "# 📓 Phase 2 — Starting Kit\n\n"
-                "Fresh agent with no memory of Phase 1. It will read "
-                "`specs/implementation_plan.md`, then write the full "
-                "`starting_kit.ipynb` (all 7 sections + demo code) in one "
-                "pass. Per-section refinement after that."
+                "# 📦 Phase 2 — Competition Creation\n\n"
+                "Fresh agent with no memory of Phase 1. It will read the "
+                "locked `specs/implementation_plan.md` and write the "
+                "Codabench bundle directly: `competition.yaml`, "
+                "`scoring_program/`, `solution/`, `pages/`, then validate "
+                "and zip. After that you'll get a download link in chat "
+                "and a one-click Upload-to-Codabench button."
             ),
         ).send()
         await _stream_one_turn(
             run_dir,
-            "Begin Phase 2. Read `specs/implementation_plan.md` first, then "
-            "build the starting kit notebook end-to-end. Follow your skill "
-            "exactly.",
+            "Begin Phase 2. Read `specs/implementation_plan.md` first, "
+            "then follow your autocodabench-implement skill end-to-end "
+            "(generate bundle → validate → zip). Don't wait for further "
+            "instructions.",
         )
-    elif target == PHASE_BUNDLE:
-        await cl.Message(
-            author="autocodabench",
-            content=(
-                "# 📦 Phase 3 — Bundle\n\n"
-                "Fresh agent with bundle-write tools. It will read the "
-                "notebook and `events.jsonl`, then produce "
-                "`competition.yaml`, `scoring_program/`, `solution/`, "
-                "`pages/`, and finally a `.zip` you can download or "
-                "publish to Codabench."
-            ),
-        ).send()
-        await _stream_one_turn(run_dir, "Begin Phase 3: bundle packaging.")
 
 
 async def _send_phase_revisit(run_dir: Path, target: str) -> None:
@@ -1388,24 +1082,14 @@ async def _send_phase_revisit(run_dir: Path, target: str) -> None:
             author="autocodabench",
             content=(
                 "# 📝 Phase 1 — Plan *(re-opened)*\n\n"
-                "Downstream artifacts discarded. The plan itself is "
+                "The bundle has been discarded. The plan itself is "
                 "preserved — tell me what to change and I'll re-snapshot "
-                "it. When you're done, click **▶ Advance to Phase 2** to "
-                "regenerate the starting kit from the updated plan."
+                "it. When you're done, click **▶ Advance to Phase 2** "
+                "again to regenerate the bundle from the updated plan."
             ),
         ).send()
-        # Don't auto-prompt the agent here — wait for the user to say what
-        # to change. (Saves a needless turn.)
-    elif target == PHASE_KIT:
-        await cl.Message(
-            author="autocodabench",
-            content=(
-                "# 📓 Phase 2 — Starting Kit *(re-opened)*\n\n"
-                "Bundle discarded. The notebook is preserved — refine "
-                "sections, or click **▶ Advance to Phase 3** when you're "
-                "ready to rebuild the bundle."
-            ),
-        ).send()
+        # Don't auto-prompt the agent — wait for the user to say what
+        # to change. Saves a needless turn.
 
 
 async def _refresh_phase_controls() -> None:
@@ -1470,32 +1154,9 @@ async def _on_revert_phase(action: cl.Action):
     await _revert_to_phase(str(target))
 
 
-@cl.action_callback("ac_stage_save_exit")
-async def _on_stage_save_exit(action: cl.Action):
-    p = action.payload or {}
-    stage = p.get("stage", "")
-    si    = int(p.get("stage_index", 0))
-    run_dir = Path(cl.user_session.get("run_dir"))
-    cl.user_session.set("ended", True)
-    _append_transcript(run_dir, role="user",
-                       text=f"[ui] Save & exit after {_STAGE_TITLE.get(stage, stage)} (stage {si}).")
-    await cl.Message(
-        author="autocodabench",
-        content=(
-            f"## 🛑 Session saved at {_STAGE_TITLE.get(stage, stage)}\n\n"
-            f"All artifacts up to this point are in `{run_dir}/` and have "
-            f"been (or are about to be) uploaded to the private HF "
-            f"Dataset. Refresh the page to start a fresh session.\n\n"
-            f"This session's run dir name: `{run_dir.name}` — keep it "
-            f"around for the dataset path."
-        ),
-    ).send()
-    # Final flush — synchronous so we don't lose the last upload to a
-    # tab-close race.
-    try:
-        await _persist_to_hf(run_dir)
-    except Exception as e:
-        log.warning("save&exit HF persist failed: %s", e)
+# Note: the legacy `ac_stage_save_exit` callback was removed when the
+# 8-stage notebook flow went away. Save-on-tab-close is still handled
+# by `on_chat_end` (HF Dataset upload of the run dir).
 
 
 async def _switch_to_implementation_for_bundle(run_dir: Path) -> None:
@@ -1621,7 +1282,6 @@ async def _stream_one_turn(run_dir: Path, prompt_text: str) -> None:
     sid = cl.user_session.get("session_id") or ""
     _write_public_artifacts(run_dir, sid)
     _write_phase_state(run_dir, sid)
-    await _refresh_task_list(run_dir)
     await _maybe_offer_bundle_actions()
     asyncio.create_task(_persist_to_hf(run_dir))
 
@@ -1785,40 +1445,15 @@ def _extract_attachment_text(element) -> tuple[str, str] | None:
 # proposals later in PR4) also live in the same panel as siblings.
 # ---------------------------------------------------------------------------
 
-def _render_notebook_html(run_dir: Path) -> str | None:
-    """Read <run>/starting_kit.ipynb and produce GitHub-style HTML.
-
-    Uses nbconvert's `classic` template — full Jupyter-classic CSS:
-    cell borders, In[]/Out[] prompts, Pygments syntax highlighting,
-    monospace code, indented outputs. The `basic` template we used
-    before was a structural skeleton only and looked like plain text.
-
-    Returns None if the file doesn't exist yet (no cells written),
-    so the caller can skip the sidebar update on early turns.
-    """
-    nb_path = run_dir / "starting_kit.ipynb"
-    if not nb_path.is_file():
-        return None
-    try:
-        import nbformat
-        from nbconvert import HTMLExporter
-        nb = nbformat.read(nb_path, as_version=4)
-        if not nb.cells:
-            return None
-        # `classic` ships with stock nbconvert and embeds enough CSS
-        # (cell wrappers, Pygments) for the output to look like a
-        # rendered Jupyter notebook on GitHub. No external scripts
-        # required, which keeps the sandboxed iframe happy.
-        exporter = HTMLExporter(template_name="classic")
-        body, _ = exporter.from_notebook_node(nb)
-        return body
-    except Exception as e:
-        log.warning("notebook render failed: %s", e)
-        return None
+# (Notebook rendering removed with the 8-stage flow — v1 web has no
+# starting_kit.ipynb. The right panel shows the implementation plan
+# instead. See the `try-web-ui-with-starting-kit` branch for the
+# previous _render_notebook_html implementation.)
 
 
 # Where chat.js fetches per-session files from. The iframe in the
-# persistent right panel points at `<PUBLIC_SESSIONS>/<sid>/notebook.html`
+# persistent right panel points at one of
+# `<PUBLIC_SESSIONS>/<sid>/{plan,bundle,transcript,cost}.html|.zip`
 # (Chainlit serves `web/public/` as static `/public/`).
 _PUBLIC_DIR = Path(__file__).resolve().parent / "public"
 _PUBLIC_SESSIONS = _PUBLIC_DIR / "sessions"
@@ -1846,40 +1481,85 @@ def _find_bundle_zip(run_dir: Path) -> Path | None:
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
-def _write_public_artifacts(run_dir: Path, session_id: str) -> None:
-    """Drop the notebook HTML + a small file-manifest into web/public/.
+_MD_DOC_CSS = (
+    "<style>body{font:14px/1.55 -apple-system,BlinkMacSystemFont,"
+    "'Segoe UI',Roboto,Helvetica,sans-serif;padding:24px 32px;"
+    "color:#1f2328;max-width:80ch;margin:0 auto;background:#ffffff}"
+    "h1,h2,h3,h4{margin-top:1.6em;color:#1f2328}"
+    "h1{font-size:22px;border-bottom:1px solid #d0d7de;padding-bottom:6px}"
+    "h2{font-size:18px}h3{font-size:15px}"
+    "pre{background:#f6f8fa;padding:12px;border-radius:6px;overflow:auto}"
+    "code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;"
+    "font-size:12.5px}"
+    "p code,li code{background:#eff1f4;padding:1px 4px;border-radius:3px}"
+    "table{border-collapse:collapse;margin:14px 0}"
+    "table td,table th{border:1px solid #d0d7de;padding:6px 10px}"
+    "a{color:#0969da}"
+    "</style>"
+)
 
-    The persistent right panel (injected by chat.js) reads these via
-    plain HTTP GET against `/public/sessions/<sid>/...`, so it never
-    relies on Chainlit's drawer/element machinery.
+
+def _render_md_to_html(md_text: str, title: str) -> str:
+    """Wrap a markdown body in a clean GitHub-flavoured HTML doc."""
+    try:
+        import markdown as _md_lib  # type: ignore
+        body = _md_lib.markdown(md_text, extensions=["fenced_code", "tables"])
+    except Exception:
+        body = ("<pre style='white-space:pre-wrap'>"
+                + md_text.replace("<", "&lt;").replace(">", "&gt;")
+                + "</pre>")
+    return (
+        "<!doctype html><meta charset='utf-8'>"
+        + _MD_DOC_CSS
+        + f"<title>{title}</title>{body}"
+    )
+
+
+def _write_public_artifacts(run_dir: Path, session_id: str) -> None:
+    """Drop rendered HTML + a file manifest into web/public/sessions/<sid>/.
+
+    The persistent right panel (chat.js) fetches these via plain HTTP
+    against `/public/sessions/<sid>/...`. We never rely on Chainlit's
+    drawer/element machinery for the workspace panel.
 
     Files written:
-      - notebook.html       — full nbconvert HTML of starting_kit.ipynb,
-                              or a small placeholder before any cells.
-      - manifest.json       — list of additional files (transcript.md,
-                              cost.jsonl, specs/*.md) with their relative
-                              public URLs.
-      - transcript.html     — sanitised render of transcript.md, opened
-                              from the manifest's chip.
-      - cost.html           — same, for cost.jsonl.
-      - specs/<name>.html   — one per spec file.
+      - plan.html       — markdown render of specs/implementation_plan.md.
+      - transcript.html — markdown render of transcript.md.
+      - cost.html       — monospace dump of cost.jsonl.
+      - bundle.zip      — copy of auto_codabench/bundles/<slug>/<slug>.zip
+                          once Phase 2 has produced one.
+      - manifest.json   — list of these files with public URLs + tags.
     """
     try:
         out = _public_session_dir(session_id)
 
-        # --- notebook ---
-        nb_html = _render_notebook_html(run_dir)
-        if nb_html is None:
-            nb_html = (
+        # --- plan ---
+        plan_paths = [
+            run_dir / "specs" / "implementation_plan.md",
+            run_dir / "implementation_plan.md",
+        ]
+        plan_path = next((p for p in plan_paths if p.is_file()), None)
+        if plan_path is not None and plan_path.stat().st_size > 0:
+            (out / "plan.html").write_text(
+                _render_md_to_html(
+                    plan_path.read_text(encoding="utf-8", errors="replace"),
+                    "implementation_plan.md",
+                ),
+                encoding="utf-8",
+            )
+        else:
+            # Placeholder so the panel always has something to render.
+            (out / "plan.html").write_text(
                 "<!doctype html><html><head><meta charset='utf-8'>"
                 "<style>body{font:14px/1.5 -apple-system,sans-serif;"
                 "padding:24px;color:#555}em{color:#888}</style>"
-                "</head><body><h2>📓 starting_kit.ipynb</h2>"
-                "<p><em>The notebook will appear here as the agent writes "
-                "and executes cells. Right now it's empty.</em></p>"
-                "</body></html>"
+                "</head><body><h2>📝 implementation_plan.md</h2>"
+                "<p><em>The plan will appear here as Phase 1 saves it. "
+                "Once you're happy with the plan, click "
+                "<b>▶ Advance to Phase 2</b> in the phase pills at the top "
+                "to package the Codabench bundle.</em></p></body></html>",
+                encoding="utf-8",
             )
-        (out / "notebook.html").write_text(nb_html, encoding="utf-8")
 
         # --- transcript ---
         transcript = run_dir / "transcript.md"
@@ -1969,16 +1649,20 @@ def _write_public_artifacts(run_dir: Path, session_id: str) -> None:
             except Exception:
                 return "0-0"
 
+        # The implementation plan is the primary file in the workspace
+        # panel; it's the locked artifact the user reviews before clicking
+        # Advance to Phase 2.
+        plan_ready = plan_path is not None and plan_path.stat().st_size > 0
         manifest = {
             "session_id": session_id,
             "updated_at": _utc_now(),
             "files": [
                 {
-                    "name":  "📓 starting_kit.ipynb",
-                    "url":   f"/public/sessions/{session_id}/notebook.html",
-                    "kind":  "notebook",
-                    "ready": nb_html is not None and "empty" not in nb_html[:200],
-                    "tag":   _tag(out / "notebook.html"),
+                    "name":  "📝 implementation_plan.md",
+                    "url":   f"/public/sessions/{session_id}/plan.html",
+                    "kind":  "plan",
+                    "ready": plan_ready,
+                    "tag":   _tag(out / "plan.html"),
                 },
             ],
         }
@@ -2006,7 +1690,11 @@ def _write_public_artifacts(run_dir: Path, session_id: str) -> None:
                 "ready": True,
                 "tag":  _tag(out / "cost.html"),
             })
+        # specs/ also contains implementation_plan.md (already surfaced as
+        # the primary 📝 plan tab above). Skip duplicates.
         for spec_html in sorted(specs_out.glob("*.html")):
+            if spec_html.stem == "implementation_plan":
+                continue
             manifest["files"].append({
                 "name": f"📄 specs/{spec_html.stem}.md",
                 "url":  f"/public/sessions/{session_id}/specs/{spec_html.name}",
@@ -2030,21 +1718,11 @@ def _phase_artifact_exists(run_dir: Path, phase: str) -> bool:
 
     PLAN   → specs/implementation_plan.md (or implementation_plan.md as
              a legacy fallback).
-    KIT    → starting_kit.ipynb with at least one cell.
     BUNDLE → any *.zip under auto_codabench/bundles/.
     """
     if phase == PHASE_PLAN:
         return ((run_dir / "specs" / "implementation_plan.md").is_file()
                 or (run_dir / "implementation_plan.md").is_file())
-    if phase == PHASE_KIT:
-        nb = run_dir / "starting_kit.ipynb"
-        if not nb.is_file():
-            return False
-        try:
-            import nbformat
-            return bool(nbformat.read(nb, as_version=4).cells)
-        except Exception:
-            return nb.stat().st_size > 100
     if phase == PHASE_BUNDLE:
         return _find_bundle_zip(run_dir) is not None
     return False
@@ -2123,139 +1801,13 @@ def _write_phase_state(run_dir: Path, session_id: str) -> None:
         log.warning("phase_state write failed: %s", e)
 
 
-_PROGRESS_ICONS = {
-    "ready":   "⏵",
-    "running": "🟡",
-    "done":    "✅",
-    "failed":  "❌",
-}
-
-
-def _render_progress_markdown(section_status: dict[str, str]) -> str:
-    """Render the 'Starting Kit development progress' message body."""
-    overall_done = all(s == "done" for s in section_status.values() if s)
-    any_running  = any(s == "running" for s in section_status.values())
-    any_failed   = any(s == "failed"  for s in section_status.values())
-    if any_failed:
-        headline = "**🛠 Starting Kit development progress — ⚠️ stage failed**"
-    elif overall_done and section_status:
-        headline = "**🛠 Starting Kit development progress — ✅ complete**"
-    elif any_running:
-        headline = "**🛠 Starting Kit development progress — in progress**"
-    else:
-        headline = "**🛠 Starting Kit development progress**"
-    lines = [headline, ""]
-    for stage, title in STAGE_TITLES:
-        if stage == "0.roadmap":
-            continue
-        st = section_status.get(stage, "ready")
-        icon = _PROGRESS_ICONS.get(st, "⏵")
-        suffix = " — *running*" if st == "running" else ""
-        lines.append(f"{icon} {title}{suffix}")
-    return "\n".join(lines)
-
-
-async def _refresh_task_list(run_dir: Path) -> None:
-    """Drive the in-chat 'Starting Kit development progress' message.
-
-    Previously this rendered a cl.TaskList in the right sidebar — that
-    UI was confusing (rows looked like generic 'Tasks'). Progress is
-    now a single, in-chat message that we keep updating as section
-    statuses change. Lazy-created on the first build event for any of
-    `1.task` ... `8.bundle`.
-    """
-    events_path = run_dir / "events.jsonl"
-    if not events_path.is_file():
-        return
-
-    # --- Tail events.jsonl from last cursor ---
-    cursor: int = int(cl.user_session.get("events_cursor") or 0)
-    try:
-        with events_path.open("r", encoding="utf-8") as f:
-            f.seek(cursor)
-            new_text = f.read()
-            new_cursor = f.tell()
-    except Exception as e:
-        log.warning("events.jsonl read failed: %s", e)
-        return
-    cl.user_session.set("events_cursor", new_cursor)
-
-    # Parse new events once into a list.
-    parsed: list[dict] = []
-    for line in new_text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            parsed.append(json.loads(line))
-        except Exception:
-            continue
-
-    # --- Detect "should we show progress yet?" on first build event ---
-    show_progress = bool(cl.user_session.get("show_progress") or False)
-    if not show_progress:
-        for ev in parsed:
-            payload = ev.get("payload") or {}
-            stage = payload.get("stage")
-            if stage and stage in _STAGE_BY_ID:
-                si = _STAGE_BY_ID[stage]
-                if ev.get("kind") in ("stage_started", "stage_done",
-                                      "stage_approved", "stage_failed") and 1 <= si <= 8:
-                    show_progress = True
-                    cl.user_session.set("show_progress", True)
-                    break
-
-    if not show_progress:
-        # Pre-PR4 legacy fallback still applies for old sessions.
-        await _refresh_legacy_bundle_gate(run_dir)
-        return
-
-    # --- Apply event status changes to the section_status dict ---
-    section_status: dict[str, str] = dict(cl.user_session.get("section_status") or {})
-    if not section_status:
-        # Initialize all design sections as "ready" the first time we
-        # decide to render progress.
-        for stage, _ in STAGE_TITLES:
-            if stage == "0.roadmap":
-                continue
-            section_status[stage] = "ready"
-
-    changed = False
-    for ev in parsed:
-        kind = ev.get("kind")
-        payload = ev.get("payload") or {}
-        stage = payload.get("stage")
-        if not stage or stage not in section_status:
-            continue
-        old = section_status[stage]
-        if kind == "stage_started" and old != "done":
-            section_status[stage] = "running"; changed = True
-        elif kind in ("stage_done", "stage_approved"):
-            section_status[stage] = "done"; changed = True
-        elif kind == "stage_failed":
-            section_status[stage] = "failed"; changed = True
-    cl.user_session.set("section_status", section_status)
-
-    # --- Send / update the progress message ---
-    progress_msg = cl.user_session.get("progress_msg")
-    body = _render_progress_markdown(section_status)
-    if progress_msg is None:
-        progress_msg = cl.Message(content=body, author="autocodabench")
-        await progress_msg.send()
-        cl.user_session.set("progress_msg", progress_msg)
-    elif changed:
-        progress_msg.content = body
-        try:
-            await progress_msg.update()
-        except Exception as e:
-            log.warning("progress msg update failed: %s", e)
-
-    # Section-picker gate trigger on any DONE.
-    for stage_id, st in section_status.items():
-        if st == "done":
-            await _maybe_offer_stage_gate(run_dir, stage_id)
-
-    await _refresh_legacy_bundle_gate(run_dir)
+# NOTE: the in-chat "Starting Kit development progress" message and
+# its per-section status tracker were removed along with the 8-stage
+# notebook flow. Phase 2 (Competition Creation) is a single agent run
+# end-to-end; we surface its tool chips directly in chat (built into
+# Chainlit's response stream) and don't need a separate progress
+# indicator. The full implementation lives on
+# `try-web-ui-with-starting-kit` if we ever revive the kit phase.
 
 
 def _augment_user_message(run_dir: Path, msg: "cl.Message") -> str:
