@@ -1,0 +1,27 @@
+{
+  "session_id": "3cb990e7d761",
+  "updated_at": "2026-05-23T20:59:46Z",
+  "files": [
+    {
+      "name": "\ud83d\udcdd implementation_plan.md",
+      "url": "/public/sessions/3cb990e7d761/plan.html",
+      "kind": "plan",
+      "ready": true,
+      "tag": "14858-1779569986"
+    },
+    {
+      "name": "\ud83d\udcc4 transcript.md",
+      "url": "/public/sessions/3cb990e7d761/transcript.html",
+      "kind": "transcript",
+      "ready": true,
+      "tag": "88082-1779569986"
+    },
+    {
+      "name": "\ud83d\udcb0 cost.jsonl",
+      "url": "/public/sessions/3cb990e7d761/cost.html",
+      "kind": "cost",
+      "ready": true,
+      "tag": "503-1779569986"
+    }
+  ]
+}

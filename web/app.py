@@ -655,11 +655,11 @@ async def on_chat_start():
     # phase bar is the navigation surface.
     await cl.Message(
         content=(
-            "# 🧠 AutoCodabench — design a Codabench competition\n\n"
+            "# AutoCodabench\n\n"
             "Tell me a competition idea — a sentence is enough — and I'll "
             "explore the design space with you, citing the literature as "
             "we go. You can also drop a PDF / markdown design doc and I'll "
-            "fill in only the gaps.\n\n"
+            "fill in the gaps.\n\n"
             "_New here? Open **Readme** in the top-right for how the "
             "phase bar works._\n\n"
             f"_session `{session_id}` · model `{DEFAULT_MODEL}` · "

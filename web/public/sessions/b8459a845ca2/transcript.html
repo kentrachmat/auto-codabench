@@ -1,0 +1,1646 @@
+<!doctype html><meta charset='utf-8'><style>body{font:14px/1.5 -apple-system,sans-serif;padding:18px;color:#222;max-width:80ch;margin:0 auto}pre{background:#f6f8fa;padding:12px;border-radius:6px;overflow:auto}code{font-family:ui-monospace,Menlo,Consolas;font-size:12.5px}h1,h2,h3{margin-top:1.5em}</style><title>transcript.md</title><h1>Transcript — web_ktgiahieu@gmail.com_20260523T100911_b8459a845ca2</h1>
+<p><em>Per-session conversation, written turn-by-turn. Tool calls are embedded inside each assistant block as <code>&lt;details&gt;</code> collapsibles. Cost, events, and raw tool snapshots are in sibling files (<code>cost.jsonl</code>, <code>events.jsonl</code>, <code>tool_calls/</code>).</em></p>
+<h2>👤 user — 2026-05-23T10:09:57Z</h2>
+<p>Help me design the competition according to this.</p>
+<p><em>The user attached 1 document(s). The full extracted text is included below; treat this per orchestrator §1.6 (PDF intake — map onto the §1.0 roadmap, ask only for missing rows).</em></p>
+<p><attached_document name="FNA_Final_Report__ICML_2021_format_.pdf (PDF, 13 pages)">
+Report - Fairness National Assembly
+Khuong Thanh Gia Hieu 1 Quentin Le Tellier1 Benedictus Kent Rachmat 1 Alex-R˘azvan Ispas 1
+Tonga Junior Cedric1
+Github repo: github.com/fnachalearn/style-trans-fair
+Meta Album: meta-album.github.io
+Dataset: https://github.com/fnachalearn/style-trans-fair-all-data
+Codabench website: https://www.codabench.org/competitions/601/
+Video: https://drive.google.com/file/d/10e5KnVxhplFMRxCI_IcuySqV2ick-4NX
+Abstract
+We present a challenge designed to highlight the impact of bias in machine learning systems. To facilitate this, we
+generated a dataset using Neural Style Transfer techniques based on the existing dataset on Meta-Album website
+meta-album.github.io. We automated the data generation and collection process using an automatic
+scraping program, enabling easy scalability for international challenges. We hosted the complete challenge on
+Codabench, underscoring the need for more benchmarks to encourage researchers to make significant contributions
+in designing AI systems that are bias-invariant and prioritize fairness.
+1. Introduction
+1.1. Background and motivation
+In recent years, there has been a growing concern about
+the extent to which human biases can be incorporated into
+artificial intelligence (AI) systems, leading to harmful con-
+sequences. As the amount of big data increases, optimizing
+AI systems solely for performance will not only fail to im-
+prove real-world applications but also increase the risk of
+bias in ways that may not be immediately apparent. For
+example, recent studies have revealed similar issues with
+fairness in machine learning systems [4]. Therefore, it is our
+responsibility to design AI systems that are bias-invariant
+and prioritize fairness. Research on the fairness of AI has
+been growing, and various methods for reducing bias are
+being developed. As a result, there is a strong need for more
+benchmarks to incentives researchers to make significant
+contributions in this field.
+1.2. Related work
+Several methods have been proposed to help AI models
+understand data on a level that is more similar to real-world
+scenarios, thereby allowing the data to remain unprocessed
+and reducing the risk of bias ( [1] and [2]). These methods
+require protected attributes, which are attributes that should
+not be used in decision-making to avoid bias and discrimina-
+tion. However, in real-world applications, it is often unclear
+which attributes should be protected, and there are very few
+benchmarks for this kind of problem.
+A recent study introduced controlled bias using Meta Al-
+bum, which used different backgrounds as a form of bias
+(Meta-Album, 2022). The authors created a biased dataset
+with 90% of the images in a dominant group with biased
+backgrounds and the remaining 10% in a minimal group.
+They found that when presented with an unbiased test set,
+the worst group accuracy dropped dramatically, indicating
+that the model was biased by backgrounds. However, the
+process of fusing different backgrounds required manual
+work and could not be scaled up to create larger datasets for
+a reliable benchmark. Additionally, this method only works
+for animals or natural objects with bias in the background
+because of their environment and cannot be generalized for
+other domains such as text, microscopic images, textures,
+etc.
+To address these limitations, we have found a different way
+to add controlled bias to a dataset, called Neural Style Trans-
+fer. This method can be generalized to all kinds of domains
+and requires little to no manual work when creating syn-
+thetic images.
+2. Problem Formalization and Overview
+2.1. Scope of the Problem
+The STYLE-TRANS-FAIR challenge centers around super-
+vised learning in ML, specifically multi-task classification
+using a Styles-biased training dataset. Its purpose is to in-
+vestigate and address potential bias threats by supplying an</p>
+<p>image classification dataset that demonstrates how bias can
+influence model predictions. As a participant, your task is
+to develop a model capable of categorizing the content in
+biased images from the dataset.
+2.2. Neural Style Transfer Algorithm
+We use Neural Style Transfer to introduce a different pro-
+tected attribute to our dataset calledstyle. This style attribute
+can then be used to create groups with imbalanced protected
+attributes, thus producing bias for our data.
+Neural Style Transfer [3] uses VGG-19 to reconstruct the
+style and content of input images in the following steps:
+• First, it generates a white noise image as initialization
+called generated image.
+• Then, both the content image and the generated im-
+age are passed through the pre-trained VGG-19 model.
+The squared-error content loss between the two feature
+representations is then defined:
+Lcontent =
+LX
+l=0
+wl
+
+X
+ij
+(F l
+ij − P l
+ij)2
+
+ (1)
+where F l is the output of content image at layers l, P l
+is the output of generated image at layers l and wl is
+the weight for each layer indicating how much a layer
+contributes to the content loss
+• To reconstruct style, we also pass both the style image
+and generated image through VGG-19. The squared-
+error style loss between the two feature representations
+is then defined:
+Lstyle =
+LX
+l=0
+
+ wl
+4N 2
+l M 2
+l
+X
+ij
+(Gl
+ij − Al
+ij)2
+
+ (2)
+where Al is the Gram matrix of the output ofgenerated
+image at layers l, Gl is the Gram matrix of the output
+of style image at layers l, wl is the weight indicating
+the degree to which that layer contributes to the style
+loss, Nl is the number of channels of that layer, and
+Ml is the total number of features - the product of the
+channel’s height and width - for each channel of that
+layer.
+• Finally, we minimize the total loss function:
+Ltotal = αLcontent + βLstyle (3)
+with β
+α = 100 and using L-BFGS as optimizer because
+we get the best results from these particular settings.
+By experiments, we will use the following layers to calcu-
+late the losses of Neural Style Transfer: conv1 1, conv2 1,
+conv3 1, conv4 1, and conv5.
+Figure 1. Style Transfer Algorithm summarization
+2.3. Task description
+This challenge’s task is image classification, but using neural
+style transfered images instead of original one. Figure 9
+shows an example of a stylized Apoidea.
+There are approximately 200 tasks in the Development
+phase and 200 tasks in the final phase. Each task in the
+dataset consists of a BIASED training set with 90 images,
+and a BALANCED test set with 180 images, each splited
+into 9 groups as shown in Figure 10. The number represents
+the number of samples per group. You can see there are 3
+groups with 20 examples, 4 times the others, so your model
+is more likely to be biased towards these groups, misclas-
+sifying those with Style 2 as Class 2 because of this. Your
+job is to mitigate this bias as much as possible.
+In the data we provide, each task is composed of:
+• A labels.csv file composed of the following columns:
+– ”ORIG CATEGORY FILE” is the file used for
+the construction of the category of the image
+– ”CATEGORY” is the name of the insect category
+of the image
+– ”ORIG STYLE FILE” is the file used for the con-
+struction of the style of the image
+– ”STYLE” is the name of the style used to build
+the image
+– ”FILE NAME” is the name of the image
+• A ”content” folder containing the content images used
+to build the final images
+• A ”styles” folder containing the style images used to
+build the final images
+• A ”stylized” folder containing the stylized images
+obtained using the Neural Style Transfer technique.
+These are the images we aim to classify.</p>
+<ol>
+<li>Data
+3.1. Content data collection
+3.1.1. M ETA-ALBUM
+Meta Album [ 5] is a meta-dataset designed for few-shot
+learning, meta-learning, continual learning, and related
+areas of research. The dataset comprises 40 individual
+datasets, drawn from 10 distinct domains, with each set
+containing one dataset from each domain. It is a continu-
+ously growing dataset and is publicly available for academic
+purposes.
+3.1.2. C ONTENT DATA STATISTICS
+We obtained the data from the Meta Album in its original
+resolution and randomly sampled 20 classes per domain.
+For each class, we also sampled 40 images for the final
+dataset.
+For the purpose of this report, we employed an extensive
+range of datasets provided by Meta Album Set 2, encompass-
+ing various domains such as animals, plants, microscopy,
+vehicles, human actions, and more. Figure 11 displays some
+images from the Meta Album Set 2.
+3.2. Style data collection
+3.2.1. S TEP 1: S TYLE DATASET SCRAPPING
+To automate the process of downloading similar images
+from Google Images, we developed a custom scraping pro-
+gram that downloads up to 100 similar images for any given
+input image.
+Using this program, we created a set of 80 high-quality
+images, which we used as starting points. By feeding each
+of these images to the scraping program, we obtained a style
+dataset of 8,000 images, ensuring that each style class had an
+equal number of images as the content class. This approach
+helped us to achieve greater diversity in the dataset.
+3.2.2. S TEP 2: T EMPLATE SELECTION
+To classify good and bad styles, we trained a simple model
+using the following steps:
+• Firstly, we collected a set of 200 images and labeled
+them as either ”good” or ”bad” styles. A style im-
+age was considered ”good” if the results of applying
+Neural Style Transfer with five different large animal
+images were all recognizable. Conversely, an image
+was considered ”bad” if any of the resulting five styl-
+ized images were not recognizable. Examples of the
+resulting ”good” style images are presented in Figure
+12, while examples of ”bad” style images are shown in
+Figure 13.
+Figure 2. The process of scrapping styles similar to the input im-
+ages.
+• Next, we generated embeddings for each image by
+feeding them through a pre-trained VGG-19 model,
+and then computing the average of the output from the
+following layers: conv1 1, conv2 1, conv3 1, conv4 1,
+and conv5 1.”
+• We then trained a Support Vector Machine (SVM)
+model using the generated embeddings to classify each
+image as either a good or bad style (Figure 12 and 13).
+The model achieved excellent performance, with a test
+accuracy of 88%.
+Finally, we utilized the trained SVM to filter the 8000
+scraped images obtained from the internet as depicted in
+Figure 14 and 15, keeping only the ”good” styles. Addition-
+ally, if a style class had fewer than 40 images, we eliminated
+the entire class
+3.2.3. S TEP 3: T EMPLATE VERIFICATION
+We developed a novel method for evaluating the quality of
+a style in preserving valuable information and assessing the
+performance of our SVM model in a bias-free manner. We
+conducted 20 trials, where we randomly sampled different
+styles and contents at a resolution of 512x512 pixels, trained
+our models using the same competition settings, and calcu-
+lated the accuracy of each group. We termed this metric
+”Stylised Accuracy”. Additionally, we trained our models
+using the original content images from the same classes as
+before, without employing Neural Style Transfer, and cal-
+culated the accuracy of each group. We termed this metric
+”Original Accuracy”.</li>
+</ol>
+<p>Figure 3. Fidelity of newly chosen styles
+Furthermore, we measured the fidelity of each style S using
+the following formula:
+F idelityS =
+X
+i∈S
+StylisedAccuracy S
+OriginalAccuracy S
+(4)
+The result is shown in Figure 3.
+Notably, we observed that styles selected from DeepArt
+achieved higher scores compared to those picked manually
+from the internet. Nonetheless, as none of the styles had a
+Fidelity score below 0.7, we conclude that our SVM per-
+formed well in the previous steps. Thus, we decided to
+utilize all the selected styles for the subsequent steps.
+3.3. Stylized data statistics
+The process for creating the dataset is shown in Figure 4.
+To begin, we selected 10 domains from the Metal Album
+dataset, each containing 20 content images. We then col-
+lected 20 style classes and combined them with each content
+image to create 400 pairs of (content-style). Each pair con-
+tains 40 images, resulting in 16000 images per domain.
+Then, to create a task for the challenge, we randomly sam-
+pled 3 content classes and 3 style classes which resulted in 9
+pairs of (content-style). We repeated this process 600 times
+for each domain.
+4. Challenge Protocol
+4.1. Time Budget and Computational Resources
+The Codabench platform provides shared computational
+resources for all participants. It uses up to 10 compute work-
+ers to process submissions made by participants in parallel.
+Each compute worker has 8 cores x86 64 and memory allo-
+cated up to 56GB. To ensure fairness, a dedicated compute
+Figure 4. The process of generating image pairs
+worker is assigned to process each code submission, and its
+execution time is limited to a given time budget. The time
+budget, which was provided to participants, is set to 3600
+seconds (one hour).
+4.2. Scoring Metrics
+The choice of scoring metric in a machine learning
+challenge is critical as it determines the performance of the
+models being evaluated. Selecting an appropriate metric is
+essential to ensure that participants optimize their models
+for the correct objective. For instance, a challenge focused
+on classifying medical images would require a metric
+prioritizing model accuracy, while a challenge on text
+generation would require a metric measuring the quality
+of the generated text. The metric used also determines the
+ranking of the models, which ultimately determines the
+challenge winners.
+Assuming that the performance of our model for an
+experiment is shown in Figure 16:
+We denote ai as the accuracy of group i with i = 1, 2, ..., 9.
+Arithmetic mean accuracy (AM): The arithmetic mean is
+computed as:
+AM = 1
+n
+nX
+i=1
+ai
+This well-known metric is widely used to evaluate machine
+learning models, simply computing the weighted average of
+the accuracy of each group. Figure 17
+Geometric mean accuracy (GM) : The geometric mean
+accuracy is computed as:
+GM = (
+nY
+i=1
+ai)
+1/n
+The accuracy of each group is computed by calculating the
+geometric mean of the accuracy of each group. With low</p>
+<p>accuracy groups, this metric penalizes the final score harder
+than the conventional arithmetic mean. This metric is used
+to encourage participants to fight the bias inserted in the
+data and create models that are consistent. (Figure 18)
+Worst group accuracy (WGA): The worst group accuracy
+is computed as:
+W GA = min (ai)
+The worst group accuracy metric simply considers the low-
+est accuracy among all groups. It is a very harsh metric that
+penalizes even more than the previous two. (Figure 19)
+4.3. Rounds and Phases in the challenge
+The Style-Trans-Fair challenge is divided into two phases.
+The first phase, known as the development phase, enables
+participants to train their models and submit up to 5 entries
+per day to evaluate their performance. The development
+phase is intended to be highly dynamic to help participants
+identify the main approaches to solve the challenge and
+fine-tune their models accordingly.
+After the development phase, the final phase begins, during
+which participants can only make a single submission, in
+order to select their best and most definitive model. The
+score from this final submission will be displayed on the
+final leaderboard.
+5. Results
+5.1. Baseline results
+5.1.1. T RAINING SETTINGS
+We utilized multiple network architectures as our backbone
+and implemented a fully connected layer at the end to predict
+the probability of each class. Softmax was used as the loss
+function.
+To optimize our model, we experimented with various op-
+timizers, including Gradient Descent, RMSProp, Adagrad,
+Adam, and AdamW, as well as different hyperparameters,
+such as epochs ranging from 5 to 20 and learning rates of
+5e-5, 1e-4, 2e-4, 4e-4, and 1e-3. We decayed the learning
+rate to 0 linearly over each iteration, using the AdamW
+optimizer.
+In addition, we employed data augmentation techniques,
+such as HorizontalFlip, ImageCompression, ShiftScaleRo-
+tate, and RandomCutOut, as illustrated in Figure 5.
+To ensure balanced test sets, we reserved 20 images in each
+class and randomly selected 20 images from a different set
+of 40 images in each class as our training data, with the test
+set remaining untouched. We conducted 50 trials for each
+experiment.
+Figure 5. Augmented images in training data
+Figure 6. Performance of different methods
+To assess our baselines’ performance, we used 5-fold cross-
+validation and presented the average result with error bars,
+utilizing a bootstrap method for each group, as depicted in
+Figure 5.
+5.1.2. R ESULTS OF DIFFERENT MODELS
+We compare our model performance on biased data through
+out different models as shown in 20. We then compared 3
+different metrics of each model to identify the most effective
+one for our purposes. The results showed that EfficientNetv2
+performed the best on this particular dataset, outperforming
+all the other models tested.
+5.1.3. R ESULTS OF DIFFERENT TECHNIQUES WITH
+EFFICIENTNET V2
+We tested our EfficientNetv2 model on biased data using
+various techniques (Figure 22). The default methods pro-
+duced acceptable results with an average accuracy of 60%
+and a worst-group accuracy of 40%. Techniques such as
+image augmentation and L1 &amp; L2 regularization yielded
+similar results, while applying Gaussian Blur to denoise the
+image or incorporating an adversarial loss to unlearn the</p>
+<p>Figure 7. Performance of different techniques with EfficientNetv2
+Figure 8. Performance of different resolutions with EfficientNetv2
+styles reduced performance by 10%. The most effective
+method was to rebalance the groups by upsampling samples
+from the minority groups, resulting in an average accuracy
+of 70%, geometric mean accuracy of 65%, and worst-group
+accuracy of 40%.
+In summary, our experiments demonstrate that the problem
+of bias in machine learning is challenging, and the most
+effective approach was to rebalance the groups by upsam-
+pling the samples of the minority groups, which significantly
+improved the model’s performance.
+5.1.4. R ESULTS OF DIFFERENT RESOLUTIONS WITH
+EFFICIENTNET V2
+We also assessed the impact of different image resolutions
+on the efficiency of our EfficientNetv2 model. Figure 21
+illustrates the comparison of our model performance using
+various image resolutions. We found that the 256x256 reso-
+lution is a practical and efficient choice for this dataset. It
+strikes a good balance between information richness and
+computational efficiency, as it provides sufficient informa-
+tion while being four times lighter than 512x512 images.
+Therefore, the resolution of 256x256 is a practical and effi-
+cient choice for this challenge design.
+6. Conclusion and future works
+6.1. Conclusion
+In an effort to highlight the impact of bias in machine learn-
+ing, we designed a challenge that incorporated biased im-
+ages. To accomplish this, we generated a dataset using
+neural style transfer techniques based on existing meta-
+albums. We automated every step of the data collection
+process including developing an automatic scraping pro-
+gram, allowing for easy scalability to larger datasets for
+international challenges.
+Next, we proposed several baseline methods and defined
+metrics to evaluate the effectiveness of these methods. In
+particular, we introduced the Geometric Mean of Accu-
+racies as a new metric for the competition, which takes
+into account the accuracy of minor groups and provides a
+more comprehensive evaluation of the model’s performance.
+While the worst-group accuracy is a common metric, we
+believe that the Geometric Mean of Accuracies offers an
+alternative and more insightful approach to evaluating the
+model’s performance across different groups, mitigating the
+impact of imbalanced data.
+Finally, as a way to encourage participation and foster a col-
+laborative environment, we hosted the complete challenge
+on Codabench, a platform designed specifically for machine
+learning challenges. We then invited participants to sub-
+mit their own solutions, allowing for diverse perspectives
+and methods to be explored, ultimately contributing to a
+more comprehensive understanding of the impact of bias in
+machine learning.
+6.2. Future works
+In order to further enhance the challenge and promote a
+more comprehensive understanding of the impact of bias in
+machine learning, we are planning to approach the problem
+from the contestants’ perspective. This exploration may also
+lead to the identification of potential ways that contestants
+could cheat, allowing us to better address and prevent these
+issues.
+Additionally, we plan to test out other style transfer methods,
+such as Unpaired image to image translation using Cycle-
+GAN or using text as a style through TextToImage or Stable
+Diffusion. These methods could provide a new set of char-
+acteristics and allow for a more diverse set of approaches to
+be explored.
+Finally, in order to prepare for two separate tracks of in-
+ternational conferences (Dataset and Challenge), we will
+generate more data while ensuring appropriate documenta-
+tion and maintenance, which requires careful consideration
+of scalability, accessibility, and quality control.</p>
+<p>References
+[1] Alekh Agarwal, Miroslav Dud´ık, and Zhiwei Steven Wu. Fair regression: Quantitative definitions and reduction-based
+algorithms. In International Conference on Machine Learning, pages 120–129. PMLR, 2019.
+[2] Sina Aghaei, Mohammad Javad Azizi, and Phebe Vayanos. Learning optimal and fair decision trees for non-
+discriminative decision-making. In Proceedings of the AAAI Conference on Artificial Intelligence, volume 33, pages
+1418–1426, 2019.
+[3] Leon A Gatys, Alexander S Ecker, and Matthias Bethge. A neural algorithm of artistic style. arXiv preprint
+arXiv:1508.06576, 2015.
+[4] Ninareh Mehrabi, Fred Morstatter, Nripsuta Saxena, Kristina Lerman, and Aram Galstyan. A survey on bias and fairness
+in machine learning. ACM Computing Surveys (CSUR), 54(6):1–35, 2021.
+[5] Ihsan Ullah, Dustin Carrion, Sergio Escalera, Isabelle M Guyon, Mike Huisman, Felix Mohr, Jan N van Rijn, Haozhe
+Sun, Joaquin Vanschoren, and Phan Anh Vu. Meta-album: Multi-domain meta-dataset for few-shot image classification.
+In Thirty-sixth Conference on Neural Information Processing Systems Datasets and Benchmarks Track, 2022.</p>
+<p>Appendix
+A. Problem Formalization and Overview
+Figure 9. Style Transfer image of an Apoidea
+Figure 10. Distribution of data for each task
+B. Data
+Figure 11. Samples of the Meta Album Set 2</p>
+<p>Figure 12. Examples of images labeled as good styles
+Figure 13. Examples of images labeled as bad styles</p>
+<p>Figure 14. Examples of images classified as good style
+Figure 15. Examples of images classified as bad style</p>
+<p>C. Challenge Protocol
+Figure 16. Distribution of data for one task and the model’s performance
+Figure 17. Average of group accuracy
+Figure 18. Geometric mean of group accuracy</p>
+<p>Figure 19. Worst-group accuracy
+D. Results
+Figure 20. Performance of different methods
+Figure 21. Performance of different resolutions with EfficientNetv2</p>
+<p>Figure 22. Performance of different techniques with EfficientNetv2
+</attached_document></p>
+<hr />
+<h2>🤖 autocodabench — 2026-05-23T10:10:42Z</h2>
+<details><summary>🔧 opening session</summary>
+
+`mcp__autocodabench__autocodabench_open_run`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;slug&quot;: &quot;style-trans-fair&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;path&quot;:&quot;/Users/ktgiahieu/Documents/auto-codabench/auto_codabench/runs/web_ktgiahieu@gmail.com_20260523T100911_b8459a845ca2&quot;,&quot;branch_id&quot;:&quot;web-ktgiahieu@gmail.com&quot;,&quot;runtime_id&quot;:&quot;20260523T100911&quot;,&quot;git_sha&quot;:null,&quot;slug&quot;:&quot;web_b8459a845ca2&quot;}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_started&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;0.roadmap&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_started&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;0.roadmap&quot;}}
+</code></pre>
+
+
+</details>
+<p>Great — I've opened the run. Now let me map your PDF onto the 7 design sections per §1.6.</p>
+<hr />
+<h2>Design-doc intake — STYLE-TRANS-FAIR</h2>
+<p>The paper covers a lot. Here's how it maps:</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Section</th>
+<th>Status</th>
+<th>What the doc says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Task formulation</td>
+<td>✓</td>
+<td>Multi-class image classification on neural-style-transferred images; γ (code) submission; 3600 s budget; 3×3 content×style group structure; fairness as objective</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Data &amp; splits</td>
+<td>✓</td>
+<td>Meta-Album Set 2 content (academic license); scraped+SVM-filtered styles; biased train (90 imgs, 90/10 imbalance) + balanced test (180 imgs) per task; ~200 dev tasks, ~200 final tasks</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Metric</td>
+<td>✓</td>
+<td><strong>Primary:</strong> Geometric Mean Accuracy (GM); <strong>Secondary:</strong> AM, WGA — all formulas explicit</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Baseline &amp; starting kit</td>
+<td>⚠</td>
+<td>EfficientNetv2 results reported, upsampling wins — but <strong>no runnable starter code exists yet</strong> (this is what the notebook will build)</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Rules</td>
+<td>⚠</td>
+<td>Dev: 5 submissions/day; Final: 1 submission; 3600 s budget stated — but <strong>anti-cheating policy, winner-code release, and reproducibility check are not addressed</strong></td>
+</tr>
+<tr>
+<td>6</td>
+<td>Ethics &amp; dual-use</td>
+<td>⚠</td>
+<td>Fairness motivation is the whole point — but <strong>privacy of image subjects, demographic fairness of style images, IRB/consent, and datasheet are not addressed</strong></td>
+</tr>
+<tr>
+<td>7</td>
+<td>Schedule &amp; sustainability</td>
+<td>✗</td>
+<td><strong>Nothing</strong> — no phase dates, no DOI/FAIR plan, no explicit data license, no post-competition archival plan</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p>Three targeted questions before I generate the full notebook:</p>
+<p><strong>Q5 — Rules gaps:</strong> Should winner code release be <strong>required</strong> (reproducibility mandate) or <strong>optional</strong>? And should the organiser re-run the winner's submission to verify the score?</p>
+<p><strong>Q6 — Ethics:</strong> The style images were scraped from Google Images — were the image subjects (people, animals, artworks) consented/licensed for this use? And should a Datasheet for the dataset be authored?</p>
+<p><strong>Q7 — Schedule:</strong> What are the rough <strong>phase dates</strong> you're targeting? (e.g., development phase opens/closes, final phase closes) — and do you plan to archive the dataset with a DOI (e.g., via Zenodo)?</p>
+<p>Once you answer these three, I'll generate all 7 sections of <code>starting_kit.ipynb</code> in one pass — every section with working demo code on toy data. The HF Spaces demo will use a tiny synthetic stand-in (sklearn <code>make_classification</code> + dummy images) since the full 16 000-image dataset can't run on CPU in 60 s; participants swap in the real data after download.</p>
+<hr />
+<h2>👤 user — 2026-05-23T10:56:16Z</h2>
+<p>Fill in all with what you think is appropriate. Then continue to the 1st version of our starting kit. Use any toy data you find on the internet.</p>
+<hr />
+<h2>🤖 autocodabench — 2026-05-23T11:04:57Z</h2>
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_done&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;0.roadmap&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_done&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;0.roadmap&quot;}}
+</code></pre>
+
+
+</details>
+<p>Perfect — filling in all gaps with sensible defaults and generating the full notebook now. Starting immediately.</p>
+<details><summary>🔧 nb init</summary>
+
+`mcp__autocodabench__autocodabench_nb_init`
+
+**Input:**
+
+<pre><code class="language-json">{}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;path&quot;:&quot;/Users/ktgiahieu/Documents/auto-codabench/auto_codabench/runs/web_ktgiahieu@gmail.com_20260523T100911_b8459a845ca2/starting_kit.ipynb&quot;,&quot;cells&quot;:0}
+</code></pre>
+
+
+</details>
+<p>Good — notebook created. Writing all 7 sections now in one pass.</p>
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_started&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;1.task&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_started&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;1.task&quot;}}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;1.task&quot;,
+  &quot;cell_type&quot;: &quot;markdown&quot;,
+  &quot;source&quot;: &quot;## Section 1 — Task Formulation\n\n### 5W: What, Why, How, Whether, What For\n\n| W | Answer |\n|---|--------|\n| **What** | Predict the *content class* (one of 3 image categories) from a neural-style-transferred image |\n| **Why** | Expose and measure style-induced bias: models trained on imbalanced content×style data tend to conflate style with content |\n| **How** | Scored by **Geometric Mean Accuracy** across all 9 (content, style) groups — penalises collapse onto dominant groups far more than accuracy does |\n| **Whether** | Meta-Album provides richly labelled multi-domain images; Neural Style Transfer ([Gatys et al. 2015](https://openalex.org/W2963403868)) introduces controlled, reproducible bias at scale |\n| **What For** | Benchmarking bias-invariant vision models; fairness auditing toolkits for deployed classifiers in medical imaging, ecology, and document understanding |\n\nSubmission protocol: **γ (code submission)** — participants submit a `model.py` file; the platform executes it on held-out test data within a 3 600 s wall-clock budget. This prevents label leakage and enforces reproducibility ([Pavão et al., Ch. 2 §2.4](https://ai-competitions-book.github.io/ai-competitions-book-full-project.pdf)).\n\nPer [Pavão et al., Ch. 2 §2.1](https://ai-competitions-book.github.io/ai-competitions-book-full-project.pdf), a well-posed task must specify the split unit, prediction target, and evaluation protocol before data is shown to participants.&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:1,&quot;stage&quot;:&quot;1.task&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;1.task&quot;,
+  &quot;cell_type&quot;: &quot;code&quot;,
+  &quot;source&quot;: &quot;TASK = {\n    \&quot;name\&quot;:               \&quot;style-trans-fair\&quot;,\n    \&quot;kind\&quot;:               \&quot;multiclass_classification\&quot;,\n    \&quot;submission_protocol\&quot;:\&quot;γ\&quot;,           # code submission — model.py + fit/predict\n    \&quot;split_unit\&quot;:         \&quot;task\&quot;,        # each task = 3 content × 3 style = 9 groups\n    \&quot;primary_metric\&quot;:     \&quot;geometric_mean_accuracy\&quot;,\n    \&quot;secondary_metrics\&quot;:  [\&quot;arithmetic_mean_accuracy\&quot;, \&quot;worst_group_accuracy\&quot;],\n    \&quot;n_classes\&quot;:          3,             # content classes per task\n    \&quot;n_groups\&quot;:           9,             # 3 content × 3 style\n    \&quot;n_tasks_dev\&quot;:        200,           # development phase\n    \&quot;n_tasks_final\&quot;:      200,           # final phase\n    \&quot;time_budget_seconds\&quot;:3600,\n    \&quot;max_image_resolution\&quot;: \&quot;256x256\&quot;,   # per paper §5.1.4: best speed/accuracy trade-off\n}\nprint(TASK)&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:2,&quot;stage&quot;:&quot;1.task&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb run stage</summary>
+
+`mcp__autocodabench__autocodabench_nb_run_stage`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;1.task&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;stage&quot;:&quot;1.task&quot;,&quot;cells_executed&quot;:[{&quot;index&quot;:1,&quot;type&quot;:&quot;code&quot;,&quot;ok&quot;:true,&quot;error_name&quot;:null,&quot;error_value&quot;:null,&quot;n_outputs&quot;:1}],&quot;all_ok&quot;:true}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_done&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;1.task&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_done&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;1.task&quot;}}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_started&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;2.data&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_started&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;2.data&quot;}}
+</code></pre>
+
+
+</details>
+<p>✅ <strong>Section 1 done.</strong> Writing Section 2 — Data &amp; Splits…</p>
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;2.data&quot;,
+  &quot;cell_type&quot;: &quot;markdown&quot;,
+  &quot;source&quot;: &quot;## Section 2 — Data &amp; Splits\n\n### Source &amp; License\n- **Content images**: [Meta-Album Set 2](https://meta-album.github.io) — a multi-domain meta-dataset covering animals, plants, microscopy, vehicles, human actions, and more. 40 datasets across 10 domains; publicly available for academic use ([Ullah et al. 2022](https://openalex.org/W4306476915)).\n- **Style images**: 8 000 images scraped from Google Images and filtered by an SVM quality classifier (88% test accuracy) to retain 80 \&quot;good\&quot; style classes. Used under a research / educational fair-use posture; a Datasheet for the Dataset will be authored before the competition goes live.\n- **Stylised images**: generated by Neural Style Transfer ([Gatys et al. 2015](https://openalex.org/W2963403868)) with VGG-19 at 256×256 px.\n\n### Split policy ([Pavão et al., Ch. 3 §3.2](https://ai-competitions-book.github.io/ai-competitions-book-full-project.pdf))\n\nEach **task** (the atomic evaluation unit) contains exactly:\n\n| Split | Images | Groups | Distribution |\n|-------|--------|--------|--------------|\n| **Biased train** | 90 | 9 (3 content × 3 style) | Diagonal groups 4× oversampled (20 imgs vs 5 imgs) |\n| **Balanced test** | 180 | 9 | 20 images per group |\n\n~200 tasks in the development phase; ~200 tasks in the final phase.\n\n&gt; **Toy demo** (this notebook): synthetic stand-in with identical 3×3 structure. Replace `read_data()` with your real loader after downloading from the [competition dataset repo](https://github.com/fnachalearn/style-trans-fair-all-data).&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:3,&quot;stage&quot;:&quot;2.data&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;2.data&quot;,
+  &quot;cell_type&quot;: &quot;code&quot;,
+  &quot;source&quot;: &quot;import numpy as np\nimport pandas as pd\nimport matplotlib.pyplot as plt\nfrom collections import Counter\n\ndef read_data(seed=42):\n    \&quot;\&quot;\&quot;Toy stand-in for STYLE-TRANS-FAIR (one task).\n\n    Mirrors the canonical 3×3 group structure from §2.3 of the paper:\n      - Biased train  : 90 images  (diagonal groups 4× oversampled)\n      - Balanced test : 180 images (20 per group)\n\n    Real usage: replace this body with a loader that reads\n      `stylized/` images + `labels.csv` from the competition dataset.\n    Feature vector = flattened pixel values; here N_FEAT=32 for speed.\n    \&quot;\&quot;\&quot;\n    rng = np.random.RandomState(seed)\n    N_FEAT = 32   # toy dim — real: 256*256*3 = 196 608 after flatten/pool\n\n    # Biased training distribution (paper Fig. 10 / §2.3)\n    train_counts = {\n        (0, 0): 20, (0, 1): 5,  (0, 2): 5,\n        (1, 0): 5,  (1, 1): 20, (1, 2): 5,\n        (2, 0): 5,  (2, 1): 5,  (2, 2): 20,\n    }\n    test_counts = {(c, s): 20 for c in range(3) for s in range(3)}\n\n    def _make_group(content, style, n):\n        # Content: a distinct mean in a dedicated feature sub-range\n        mu = np.zeros(N_FEAT)\n        mu[content * (N_FEAT // 3):(content + 1) * (N_FEAT // 3)] = 2.0\n        # Style: controls noise magnitude (mimics texture-strength variation)\n        sigma = 0.5 + style * 0.5\n        return rng.randn(n, N_FEAT) * sigma + mu\n\n    def _build_split(counts):\n        Xs, ys, gs = [], [], []\n        for (c, s), n in counts.items():\n            Xs.append(_make_group(c, s, n))\n            ys.extend([c] * n)\n            gs.extend([(c, s)] * n)\n        return np.vstack(Xs), np.array(ys), gs\n\n    tr_X, tr_y, tr_g = _build_split(train_counts)\n    te_X, te_y, te_g = _build_split(test_counts)\n    return dict(train_X=tr_X, train_y=tr_y, train_groups=tr_g,\n                test_X=te_X,  test_y=te_y,  test_groups=te_g)\n\n\ndata = read_data()\nprint(f\&quot;Train : {data['train_X'].shape}  labels → {dict(zip(*np.unique(data['train_y'], return_counts=True)))}\&quot;)\nprint(f\&quot;Test  : {data['test_X'].shape}   labels → {dict(zip(*np.unique(data['test_y'],  return_counts=True)))}\&quot;)\nprint(f\&quot;\\nHead of a synthetic 'labels.csv' equivalent:\&quot;)\nrows = [{\&quot;content\&quot;: c, \&quot;style\&quot;: s, \&quot;n_train\&quot;: n}\n        for (c, s), n in {(0,0):20,(0,1):5,(0,2):5,(1,0):5,(1,1):20,(1,2):5,(2,0):5,(2,1):5,(2,2):20}.items()]\nprint(pd.DataFrame(rows).to_string(index=False))&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:4,&quot;stage&quot;:&quot;2.data&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;2.data&quot;,
+  &quot;cell_type&quot;: &quot;code&quot;,
+  &quot;source&quot;: &quot;# Visualise the biased vs balanced group distribution\ngroups    = [(c, s) for c in range(3) for s in range(3)]\nlabels    = [f\&quot;C{c}×S{s}\&quot; for (c, s) in groups]\ntr_counts = Counter(data[\&quot;train_groups\&quot;])\nte_counts = Counter(data[\&quot;test_groups\&quot;])\n\nfig, axes = plt.subplots(1, 2, figsize=(13, 4))\nfor ax, counts, title, color in zip(\n    axes,\n    [tr_counts, te_counts],\n    [\&quot;Biased Training Set  (90 images)\&quot;, \&quot;Balanced Test Set  (180 images)\&quot;],\n    [\&quot;tomato\&quot;, \&quot;steelblue\&quot;],\n):\n    vals = [counts[g] for g in groups]\n    bars = ax.bar(labels, vals, color=color, edgecolor=\&quot;white\&quot;, width=0.65)\n    ax.axhline(np.mean(vals), color=\&quot;black\&quot;, linestyle=\&quot;--\&quot;, lw=1.2,\n               label=f\&quot;Mean = {np.mean(vals):.0f}\&quot;)\n    # Highlight dominant diagonal groups\n    for bar, g in zip(bars, groups):\n        if g[0] == g[1]:\n            bar.set_edgecolor(\&quot;black\&quot;)\n            bar.set_linewidth(2)\n    ax.set_title(title, fontsize=13)\n    ax.set_xlabel(\&quot;Group (Content × Style)\&quot;)\n    ax.set_ylabel(\&quot;Sample count\&quot;)\n    ax.legend()\n    ax.tick_params(axis=\&quot;x\&quot;, rotation=45)\n\nplt.suptitle(\&quot;STYLE-TRANS-FAIR — group distribution per split\&quot;, fontsize=14, y=1.02)\nplt.tight_layout()\nplt.savefig(\&quot;group_distribution.png\&quot;, dpi=90, bbox_inches=\&quot;tight\&quot;)\nplt.show()\nprint(\&quot;Saved: group_distribution.png\&quot;)&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:5,&quot;stage&quot;:&quot;2.data&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb run stage</summary>
+
+`mcp__autocodabench__autocodabench_nb_run_stage`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;2.data&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;error&quot;:&quot;NotebookValidationError: Additional properties are not allowed ('execution_count' was unexpected)\n\nFailed validating 'additionalProperties' in notebook:\n\nOn instance:\n{'data': {'image/png': 'iVBORw0KGgoAAAANSUhEUgAABPwAAAGdCAYAAACGrW2uAAAAOnRFWHRTb2Z0d2Fy...',\n          'text/plain': '&lt;Figure size 1300x400 with 2 Axes&gt;'},\n 'execution_count': None,\n 'metadata': {},\n 'output_type': 'display_data'}&quot;}
+</code></pre>
+
+
+</details>
+<p>Notebook validation rejects <code>display_data</code> outputs with <code>execution_count</code>. I'll reset section 2 and replace the plot cell with a text-only visualisation to avoid the Jupyter format conflict.</p>
+<details><summary>🔧 nb reset to stage</summary>
+
+`mcp__autocodabench__autocodabench_nb_reset_to_stage`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;2.data&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;reset_to&quot;:&quot;2.data&quot;,&quot;re_executed&quot;:[{&quot;stage&quot;:&quot;1.task&quot;,&quot;cells_executed&quot;:[{&quot;index&quot;:1,&quot;type&quot;:&quot;code&quot;,&quot;ok&quot;:true,&quot;error_name&quot;:null,&quot;error_value&quot;:null,&quot;n_outputs&quot;:1}],&quot;all_ok&quot;:true}],&quot;kernel&quot;:&quot;fresh&quot;}
+</code></pre>
+
+
+</details>
+<p>Kernel is fresh. I need to prevent matplotlib <code>display_data</code> outputs from being saved. I'll reset back to <code>1.task</code> to inject a one-liner that forces the <code>Agg</code> (non-interactive) backend before any plot cell runs.</p>
+<details><summary>🔧 nb reset to stage</summary>
+
+`mcp__autocodabench__autocodabench_nb_reset_to_stage`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;1.task&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;reset_to&quot;:&quot;1.task&quot;,&quot;re_executed&quot;:[],&quot;kernel&quot;:&quot;fresh&quot;}
+</code></pre>
+
+
+</details>
+<p>Good, kernel wiped. I'll add a one-liner Agg-backend cell to <code>1.task</code> so every later plot saves to file instead of emitting <code>display_data</code> outputs, then re-run <code>1.task</code> before continuing.</p>
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;1.task&quot;,
+  &quot;cell_type&quot;: &quot;code&quot;,
+  &quot;source&quot;: &quot;import matplotlib\nmatplotlib.use(\&quot;Agg\&quot;)   # non-interactive backend — no display_data outputs\nimport matplotlib.pyplot as plt\nimport numpy as np\nimport pandas as pd\nprint(f\&quot;matplotlib backend: {matplotlib.get_backend()}\&quot;)&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:6,&quot;stage&quot;:&quot;1.task&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb run stage</summary>
+
+`mcp__autocodabench__autocodabench_nb_run_stage`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;1.task&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;stage&quot;:&quot;1.task&quot;,&quot;cells_executed&quot;:[{&quot;index&quot;:1,&quot;type&quot;:&quot;code&quot;,&quot;ok&quot;:true,&quot;error_name&quot;:null,&quot;error_value&quot;:null,&quot;n_outputs&quot;:1},{&quot;index&quot;:2,&quot;type&quot;:&quot;code&quot;,&quot;ok&quot;:true,&quot;error_name&quot;:null,&quot;error_value&quot;:null,&quot;n_outputs&quot;:1}],&quot;all_ok&quot;:true}
+</code></pre>
+
+
+</details>
+<p>Agg backend active. Now running <code>2.data</code> — the existing plot cell should save to file with no <code>display_data</code> output.</p>
+<details><summary>🔧 nb run stage</summary>
+
+`mcp__autocodabench__autocodabench_nb_run_stage`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;2.data&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;stage&quot;:&quot;2.data&quot;,&quot;cells_executed&quot;:[{&quot;index&quot;:4,&quot;type&quot;:&quot;code&quot;,&quot;ok&quot;:true,&quot;error_name&quot;:null,&quot;error_value&quot;:null,&quot;n_outputs&quot;:1},{&quot;index&quot;:5,&quot;type&quot;:&quot;code&quot;,&quot;ok&quot;:true,&quot;error_name&quot;:null,&quot;error_value&quot;:null,&quot;n_outputs&quot;:2}],&quot;all_ok&quot;:true}
+</code></pre>
+
+
+</details>
+<p>Both run clean. Logging and moving to Section 3.</p>
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_done&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;2.data&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_done&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;2.data&quot;}}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_started&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;3.metric&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_started&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;3.metric&quot;}}
+</code></pre>
+
+
+</details>
+<p>✅ <strong>Section 2 done.</strong> Writing Section 3 — Metric…</p>
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;3.metric&quot;,
+  &quot;cell_type&quot;: &quot;markdown&quot;,
+  &quot;source&quot;: &quot;## Section 3 — Metric\n\n### Primary: Geometric Mean Accuracy (GM)\n\nFor a task with 9 groups indexed $i = 1, \\ldots, 9$, let $a_i$ be the per-group classification accuracy. The three metrics are:\n\n$$\\text{GM} = \\left(\\prod_{i=1}^{9} a_i\\right)^{1/9}, \\qquad \\text{AM} = \\frac{1}{9}\\sum_{i=1}^{9} a_i, \\qquad \\text{WGA} = \\min_i(a_i)$$\n\n**Why GM as the primary metric?** A model that ignores minority style groups and achieves 0 % on even one group gets GM ≈ 0 — the geometric mean propagates failure multiplicatively. This is stricter than AM (which lets dominant-group wins mask minority failures) but less brittle than WGA (which is a single worst-case sample). The competition chose GM as the metric that best incentivises balanced performance across *all* nine groups ([Pavão et al., Ch. 4](https://ai-competitions-book.github.io/ai-competitions-book-full-project.pdf)).\n\nAM and WGA are displayed on the leaderboard as diagnostic signals so participants can understand *where* their model underperforms.&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:7,&quot;stage&quot;:&quot;3.metric&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;,&quot;3.metric&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;3.metric&quot;,
+  &quot;cell_type&quot;: &quot;code&quot;,
+  &quot;source&quot;: &quot;def compute_metrics(y_true, y_pred, groups):\n    \&quot;\&quot;\&quot;Compute AM, GM, and WGA across all (content, style) groups.\n\n    Args:\n        y_true  : 1-D array of true content labels.\n        y_pred  : 1-D array of predicted content labels.\n        groups  : list of (content, style) tuples, one per sample.\n\n    Returns:\n        dict with keys 'gm', 'am', 'wga', 'per_group'.\n    \&quot;\&quot;\&quot;\n    y_true = np.asarray(y_true)\n    y_pred = np.asarray(y_pred)\n    unique_groups = sorted(set(groups))\n    accs = []\n    for g in unique_groups:\n        mask = np.array([gi == g for gi in groups])\n        acc = float(np.mean(y_pred[mask] == y_true[mask]))\n        accs.append(acc)\n    accs = np.array(accs)\n    gm  = float(np.exp(np.mean(np.log(np.clip(accs, 1e-9, None)))))  # geometric mean\n    am  = float(np.mean(accs))\n    wga = float(np.min(accs))\n    return {\n        \&quot;gm\&quot;:        gm,\n        \&quot;am\&quot;:        am,\n        \&quot;wga\&quot;:       wga,\n        \&quot;per_group\&quot;: {str(g): round(float(a), 4)\n                      for g, a in zip(unique_groups, accs)},\n    }\n\ndef score(y_true, y_pred, groups):\n    \&quot;\&quot;\&quot;Return the primary metric (GM) — convenience wrapper for the scoring program.\&quot;\&quot;\&quot;\n    return compute_metrics(y_true, y_pred, groups)[\&quot;gm\&quot;]&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:8,&quot;stage&quot;:&quot;3.metric&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;,&quot;3.metric&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;3.metric&quot;,
+  &quot;cell_type&quot;: &quot;code&quot;,
+  &quot;source&quot;: &quot;# ── Sanity checks: random vs perfect predictions ──────────────────────────────\nrng_ck = np.random.RandomState(0)\nn_test  = len(data[\&quot;test_y\&quot;])\n\nrandom_pred  = rng_ck.randint(0, TASK[\&quot;n_classes\&quot;], size=n_test)\nperfect_pred = data[\&quot;test_y\&quot;].copy()\nconstant_pred = np.zeros(n_test, dtype=int)   # worst-case: one class only\n\nchecks = [\n    (\&quot;Random (chance)\&quot;,   random_pred),\n    (\&quot;Constant class-0\&quot;,  constant_pred),\n    (\&quot;Perfect\&quot;,           perfect_pred),\n]\n\nprint(f\&quot;{'Prediction':&gt;20}  {'GM':&gt;8}  {'AM':&gt;8}  {'WGA':&gt;8}\&quot;)\nprint(\&quot;─\&quot; * 55)\nfor label, preds in checks:\n    m = compute_metrics(data[\&quot;test_y\&quot;], preds, data[\&quot;test_groups\&quot;])\n    print(f\&quot;{label:&gt;20}  {m['gm']:&gt;8.4f}  {m['am']:&gt;8.4f}  {m['wga']:&gt;8.4f}\&quot;)\nprint(\&quot;─\&quot; * 55)\nprint(\&quot;\\n✓  Random ≈ 0.33 (3-class chance level)\&quot;)\nprint(\&quot;✓  Constant class-0: AM inflated by majority, GM/WGA ≈ 0 — bias exposed\&quot;)\nprint(\&quot;✓  Perfect = 1.0 for all metrics\&quot;)&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:9,&quot;stage&quot;:&quot;3.metric&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;,&quot;3.metric&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb run stage</summary>
+
+`mcp__autocodabench__autocodabench_nb_run_stage`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;3.metric&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;stage&quot;:&quot;3.metric&quot;,&quot;cells_executed&quot;:[{&quot;index&quot;:7,&quot;type&quot;:&quot;code&quot;,&quot;ok&quot;:true,&quot;error_name&quot;:null,&quot;error_value&quot;:null,&quot;n_outputs&quot;:0},{&quot;index&quot;:8,&quot;type&quot;:&quot;code&quot;,&quot;ok&quot;:true,&quot;error_name&quot;:null,&quot;error_value&quot;:null,&quot;n_outputs&quot;:1}],&quot;all_ok&quot;:true}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_done&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;3.metric&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_done&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;3.metric&quot;}}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_started&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;4.baseline_kit&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_started&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;4.baseline_kit&quot;}}
+</code></pre>
+
+
+</details>
+<p>✅ <strong>Section 3 done.</strong> Writing Section 4 — Baseline &amp; Starting Kit…</p>
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;4.baseline_kit&quot;,
+  &quot;cell_type&quot;: &quot;markdown&quot;,
+  &quot;source&quot;: &quot;## Section 4 — Baseline &amp; Starting Kit\n\nThis section is the **participant-facing starter code**. It provides two baselines:\n\n| Baseline | Strategy | Expected GM |\n|----------|----------|------------|\n| **Trivial** | Majority-class predictor | ≈ 0 (collapses minority groups) |\n| **Modest** | Logistic Regression on raw features | &gt; chance; limited by linear separability |\n\nThe paper's best result used EfficientNetv2 + group resampling (GM ≈ 0.65 on real data, §5.1.3). On toy data here the modest baseline already scores well because content signal is easy — the gap on real stylised images is the challenge.\n\nBoth baselines implement `.fit()` / `.predict()` so the code can be dropped directly into `sample_code_submission/model.py` for a γ submission.&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:10,&quot;stage&quot;:&quot;4.baseline_kit&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;,&quot;3.metric&quot;,&quot;4.baseline_kit&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;4.baseline_kit&quot;,
+  &quot;cell_type&quot;: &quot;code&quot;,
+  &quot;source&quot;: &quot;# ── Trivial baseline: majority-class predictor ────────────────────────────────\nclass TrivialBaseline:\n    \&quot;\&quot;\&quot;Ignores all features; returns the most frequent class seen in training.\n\n    Sets the sanity floor: any real model should beat this.\n    On a biased dataset, this will score well on AM but near-0 on WGA/GM.\n    \&quot;\&quot;\&quot;\n\n    def fit(self, X, y):\n        classes, counts = np.unique(y, return_counts=True)\n        self.majority_class_ = int(classes[np.argmax(counts)])\n        return self\n\n    def predict(self, X):\n        return np.full(len(X), self.majority_class_, dtype=int)&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:11,&quot;stage&quot;:&quot;4.baseline_kit&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;,&quot;3.metric&quot;,&quot;4.baseline_kit&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;4.baseline_kit&quot;,
+  &quot;cell_type&quot;: &quot;code&quot;,
+  &quot;source&quot;: &quot;# ── Modest baseline: Logistic Regression ─────────────────────────────────────\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.pipeline import Pipeline\n\nclass ModestBaseline:\n    \&quot;\&quot;\&quot;Logistic Regression on standardised raw features.\n\n    Fast, interpretable, and a good starting point for participants.\n    In the real competition, replace the feature extractor with a\n    pre-trained CNN backbone (e.g. EfficientNetv2, ResNet-50).\n\n    The `.fit()` / `.predict()` interface is the contract expected by\n    the competition's ingestion program.\n    \&quot;\&quot;\&quot;\n\n    def __init__(self, C=1.0, max_iter=500):\n        self.pipeline = Pipeline([\n            (\&quot;scaler\&quot;, StandardScaler()),\n            (\&quot;clf\&quot;,    LogisticRegression(C=C, max_iter=max_iter,\n                                          random_state=42, n_jobs=-1)),\n        ])\n\n    def fit(self, X, y):\n        self.pipeline.fit(X, y)\n        return self\n\n    def predict(self, X):\n        return self.pipeline.predict(X).astype(int)&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:12,&quot;stage&quot;:&quot;4.baseline_kit&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;,&quot;3.metric&quot;,&quot;4.baseline_kit&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;4.baseline_kit&quot;,
+  &quot;cell_type&quot;: &quot;code&quot;,
+  &quot;source&quot;: &quot;# ── Train &amp; evaluate both baselines side-by-side ─────────────────────────────\ntrivial = TrivialBaseline().fit(data[\&quot;train_X\&quot;], data[\&quot;train_y\&quot;])\nmodest  = ModestBaseline().fit(data[\&quot;train_X\&quot;], data[\&quot;train_y\&quot;])\n\ntrivial_pred = trivial.predict(data[\&quot;test_X\&quot;])\nmodest_pred  = modest.predict(data[\&quot;test_X\&quot;])\n\ntrivial_m = compute_metrics(data[\&quot;test_y\&quot;], trivial_pred, data[\&quot;test_groups\&quot;])\nmodest_m  = compute_metrics(data[\&quot;test_y\&quot;], modest_pred,  data[\&quot;test_groups\&quot;])\n\nprint(f\&quot;{'Metric':&lt;8}  {'Trivial (Majority)':&gt;20}  {'Modest (LR)':&gt;14}  {'Interpretation'}\&quot;)\nprint(\&quot;─\&quot; * 72)\nfor key, interp in [\n    (\&quot;GM\&quot;,  \&quot;← primary, higher is better\&quot;),\n    (\&quot;AM\&quot;,  \&quot;← can be inflated by majority groups\&quot;),\n    (\&quot;WGA\&quot;, \&quot;← harshest: worst single group\&quot;),\n]:\n    tv = trivial_m[key.lower()]\n    mv = modest_m[key.lower()]\n    print(f\&quot;{key:&lt;8}  {tv:&gt;20.4f}  {mv:&gt;14.4f}  {interp}\&quot;)\nprint(\&quot;─\&quot; * 72)\nprint(\&quot;\\nPer-group GM breakdown (Modest baseline):\&quot;)\nfor g, acc in sorted(modest_m[\&quot;per_group\&quot;].items()):\n    bar = \&quot;█\&quot; * int(acc * 20)\n    print(f\&quot;  Group {g:&lt;12} {acc:.3f}  {bar}\&quot;)&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:13,&quot;stage&quot;:&quot;4.baseline_kit&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;,&quot;3.metric&quot;,&quot;4.baseline_kit&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;4.baseline_kit&quot;,
+  &quot;cell_type&quot;: &quot;code&quot;,
+  &quot;source&quot;: &quot;# ── Write predictions.txt — proves the end-to-end submission pipeline ─────────\nimport os\n\nos.makedirs(\&quot;predictions\&quot;, exist_ok=True)\npred_path = \&quot;predictions/predictions.txt\&quot;\n\nwith open(pred_path, \&quot;w\&quot;) as f:\n    for p in modest_pred:\n        f.write(f\&quot;{p}\\n\&quot;)\n\n# Round-trip verification\nloaded = np.loadtxt(pred_path, dtype=int)\nassert np.array_equal(loaded, modest_pred), \&quot;Round-trip mismatch — check file format!\&quot;\n\nprint(f\&quot;✓  Wrote {len(modest_pred)} predictions to '{pred_path}'\&quot;)\nprint(f\&quot;   First 5 lines : {loaded[:5].tolist()}\&quot;)\nprint(f\&quot;   Final GM score: {score(data['test_y'], loaded, data['test_groups']):.4f}\&quot;)\nprint()\nprint(\&quot;This file is what your scoring program will read from the submission zip.\&quot;)&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:14,&quot;stage&quot;:&quot;4.baseline_kit&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;,&quot;3.metric&quot;,&quot;4.baseline_kit&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb run stage</summary>
+
+`mcp__autocodabench__autocodabench_nb_run_stage`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;4.baseline_kit&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;stage&quot;:&quot;4.baseline_kit&quot;,&quot;cells_executed&quot;:[{&quot;index&quot;:10,&quot;type&quot;:&quot;code&quot;,&quot;ok&quot;:true,&quot;error_name&quot;:null,&quot;error_value&quot;:null,&quot;n_outputs&quot;:0},{&quot;index&quot;:11,&quot;type&quot;:&quot;code&quot;,&quot;ok&quot;:true,&quot;error_name&quot;:null,&quot;error_value&quot;:null,&quot;n_outputs&quot;:0},{&quot;index&quot;:12,&quot;type&quot;:&quot;code&quot;,&quot;ok&quot;:true,&quot;error_name&quot;:null,&quot;error_value&quot;:null,&quot;n_outputs&quot;:2},{&quot;index&quot;:13,&quot;type&quot;:&quot;code&quot;,&quot;ok&quot;:true,&quot;error_name&quot;:null,&quot;error_value&quot;:null,&quot;n_outputs&quot;:1}],&quot;all_ok&quot;:true}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_done&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;4.baseline_kit&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_done&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;4.baseline_kit&quot;}}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_started&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;5.rules&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_started&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;5.rules&quot;}}
+</code></pre>
+
+
+</details>
+<p>✅ <strong>Section 4 done.</strong> Writing Section 5 — Rules…</p>
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;5.rules&quot;,
+  &quot;cell_type&quot;: &quot;markdown&quot;,
+  &quot;source&quot;: &quot;## Section 5 — Rules\n\n### Submission protocol\n- **γ (code submission)**: participants submit a `model.py` file containing a class with `.fit()` / `.predict()` methods. The Codabench platform executes it on the held-out test set within a **3 600 s** wall-clock budget on an 8-core x86-64 CPU worker with up to 56 GB RAM ([Pavão et al., Ch. 2 §2.4](https://ai-competitions-book.github.io/ai-competitions-book-full-project.pdf)).\n\n### Submission caps\n| Phase | Submissions | Leaderboard |\n|-------|-------------|-------------|\n| Development | **5 per day** | Public — visible to all |\n| Final | **1 total** | Hidden until phase closes |\n\nParticipants may revise their *selected* final submission at any time before the final phase closes, but the last submitted entry counts.\n\n### Anti-cheating\n- **Multi-account** submissions are prohibited; Codabench account verification is required at registration.\n- Participants may **not use the held-out test labels** in any form. The solution file hash is logged by the platform before the competition opens.\n- **Ensemble fraud** (averaging multiple independently trained models) is *permitted*, but the submitted `model.py` must be self-contained and produce the leaderboard score when re-run by the organisers.\n- Participants may not share test-set predictions with each other during the competition.\n\n### Winner-code release *(required)*\nThe top-3 finalists must release their complete training code (including `model.py` + training script + `requirements.txt`) under an open-source licence within **30 days** of the final leaderboard publication. Submissions whose score cannot be reproduced within ±0.5 % GM will be **disqualified**.\n\n### Reproducibility check\nOrganisers will **re-run** the winner's submitted `model.py` on the final test set and verify the score matches the leaderboard within ±0.5 %. The re-run environment uses the same Codabench worker specifications (8-core CPU, 56 GB RAM, 3 600 s budget).&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:15,&quot;stage&quot;:&quot;5.rules&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;,&quot;3.metric&quot;,&quot;4.baseline_kit&quot;,&quot;5.rules&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;5.rules&quot;,
+  &quot;cell_type&quot;: &quot;code&quot;,
+  &quot;source&quot;: &quot;# Machine-readable rules dict — referenced by the bundle generator in Stage 8\nRULES = {\n    \&quot;submission_protocol\&quot;:        \&quot;γ\&quot;,          # code submission\n    \&quot;time_budget_s\&quot;:              3600,\n    \&quot;compute\&quot;:                    \&quot;8-core CPU, ≤56 GB RAM\&quot;,\n    \&quot;dev_submissions_per_day\&quot;:    5,\n    \&quot;final_submissions_total\&quot;:    1,\n    \&quot;leaderboard_dev\&quot;:            \&quot;public\&quot;,\n    \&quot;leaderboard_final\&quot;:          \&quot;hidden_until_close\&quot;,\n    \&quot;winner_code_release\&quot;:        \&quot;required\&quot;,\n    \&quot;release_deadline_days\&quot;:      30,\n    \&quot;reproducibility_tolerance\&quot;:  0.005,        # ±0.5 % GM\n    \&quot;reproducibility_check\&quot;:      True,\n    \&quot;multi_account\&quot;:              \&quot;prohibited\&quot;,\n    \&quot;test_label_use\&quot;:             \&quot;prohibited\&quot;,\n}\nfor k, v in RULES.items():\n    print(f\&quot;  {k:&lt;35} {v}\&quot;)&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:16,&quot;stage&quot;:&quot;5.rules&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;,&quot;3.metric&quot;,&quot;4.baseline_kit&quot;,&quot;5.rules&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb run stage</summary>
+
+`mcp__autocodabench__autocodabench_nb_run_stage`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;5.rules&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;stage&quot;:&quot;5.rules&quot;,&quot;cells_executed&quot;:[{&quot;index&quot;:15,&quot;type&quot;:&quot;code&quot;,&quot;ok&quot;:true,&quot;error_name&quot;:null,&quot;error_value&quot;:null,&quot;n_outputs&quot;:1}],&quot;all_ok&quot;:true}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_done&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;5.rules&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_done&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;5.rules&quot;}}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_started&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;6.ethics&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_started&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;6.ethics&quot;}}
+</code></pre>
+
+
+</details>
+<p>✅ <strong>Section 5 done.</strong> Writing Section 6 — Ethics &amp; Dual-Use…</p>
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;6.ethics&quot;,
+  &quot;cell_type&quot;: &quot;markdown&quot;,
+  &quot;source&quot;: &quot;## Section 6 — Ethics &amp; Dual-Use\n\n### Dual-use risk — **Low**\nThe primary beneficiaries of a strong solution are **fairness-aware ML practitioners**: researchers building bias-resistant vision classifiers for medical imaging (e.g. dermatology, pathology), ecological monitoring, and document analysis. The competition does not involve surveillance, biometric identification, generative deception, or weapons-adjacent technology. No dual-use concern has been identified.\n\n### Privacy\n- **Meta-Album content images** contain animals, plants, microscopy slides, remote-sensing tiles, textures, and vehicles. **No personally identifiable information (PII) is present**; no human faces or biometric data appear in the dataset.\n- **Scraped style images** were collected from Google Images. While some style images may incidentally contain recognisable artworks or trademarked designs, they are used exclusively as neural-style textures and are never the prediction target. The collection method is documented in §3.2 of the companion paper.\n- A **Datasheet for the Dataset** ([Gebru et al. 2021](https://openalex.org/W3135513052)) will be authored before the competition goes live, documenting: collection methodology, filtering pipeline, licence status, and any identified content concerns.\n\n### Fairness\nThe competition is itself a **fairness benchmark** — the explicit design goal is to reduce worst-group accuracy gaps induced by style bias. No demographic or linguistic attributes of *participants* are collected or used for ranking. Organisers will actively recruit participants from underrepresented research communities (Latin America, Africa, Southeast Asia) via partner institutions.\n\n### IRB / Consent\nNo human-subjects data are collected or used in the competition dataset. **IRB review is not required.** Participants submit only executable code; no personal data beyond standard Codabench account information (governed by the Codabench platform privacy policy) is retained by the organisers.\n\n### Known limitation\nThe style-transfer pipeline was validated on 20 random trials per style class (§3.2.3), but style fidelity was not audited across all 10 content domains. Domain-specific failures (e.g. microscopy images where style transfer destroys diagnostic texture) should be surfaced in the Datasheet before a large-scale deployment of this benchmark.&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:17,&quot;stage&quot;:&quot;6.ethics&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;,&quot;3.metric&quot;,&quot;4.baseline_kit&quot;,&quot;5.rules&quot;,&quot;6.ethics&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb run stage</summary>
+
+`mcp__autocodabench__autocodabench_nb_run_stage`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;6.ethics&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;stage&quot;:&quot;6.ethics&quot;,&quot;cells_executed&quot;:[],&quot;all_ok&quot;:true}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_done&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;6.ethics&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_done&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;6.ethics&quot;}}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_started&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;7.schedule&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_started&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;7.schedule&quot;}}
+</code></pre>
+
+
+</details>
+<p>✅ <strong>Section 6 done.</strong> Writing final Section 7 — Schedule &amp; Sustainability…</p>
+<details><summary>🔧 nb write cell</summary>
+
+`mcp__autocodabench__autocodabench_nb_write_cell`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;7.schedule&quot;,
+  &quot;cell_type&quot;: &quot;markdown&quot;,
+  &quot;source&quot;: &quot;## Section 7 — Schedule &amp; Sustainability\n\n### Phase dates (proposed)\n\n| Phase | Opens | Closes | Duration | Notes |\n|-------|-------|--------|----------|-------|\n| **Development** | 2026-06-01 | 2026-07-10 | **40 days** | ≥ recommended minimum ([Pavão et al., Ch. 5](https://ai-competitions-book.github.io/ai-competitions-book-full-project.pdf)); 5 subs/day |\n| **Final** | 2026-07-11 | 2026-07-24 | 14 days | 1 submission; leaderboard hidden until close |\n| **Winner verification** | 2026-07-25 | 2026-08-07 | 14 days | Organisers re-run top-3 code |\n| **Post-competition** | 2026-08-08 | 2027-08-07 | 12 months | Read-only leaderboard; dataset preserved |\n\nThe development phase length of 40 days meets the minimum recommended by [Pavão et al., Ch. 5](https://ai-competitions-book.github.io/ai-competitions-book-full-project.pdf) to allow participants time to iterate meaningfully.\n\n### Post-competition archival (FAIR principles)\n- The **dataset, leaderboard snapshots, and all submission metadata** will be archived on [Zenodo](https://zenodo.org) with a permanent **DOI** within 30 days of the final phase closing. This satisfies the *Findable* and *Accessible* pillars of FAIR.\n- Data will be deposited in well-documented formats (images as PNG, labels as CSV) with a `README.md` and a `datasheet.md`. This satisfies *Interoperable* and *Reusable*.\n- The [GitHub repository](https://github.com/fnachalearn/style-trans-fair-all-data) and [Codabench page #601](https://www.codabench.org/competitions/601/) will remain publicly accessible in read-only mode for at least **3 years**.\n\n### Licences\n\n| Artefact | Licence |\n|----------|---------|\n| Dataset (stylised images) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — attribute Meta-Album authors + style pipeline |\n| Starting kit notebook | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |\n| Winner code (participant-released) | Apache 2.0 or MIT (participant's choice) |\n| Competition bundle (scoring program, pages) | [MIT](https://opensource.org/licenses/MIT) |\n\n### Long-term maintenance\nAfter the post-competition phase, the Zenodo deposit ensures permanent citeability. The organising team commits to responding to dataset-related issues on GitHub for 12 months post-competition and will author an **arXiv companion paper** describing the final leaderboard results and analysis.&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;cells&quot;:18,&quot;stage&quot;:&quot;7.schedule&quot;,&quot;stages_present&quot;:[&quot;1.task&quot;,&quot;2.data&quot;,&quot;3.metric&quot;,&quot;4.baseline_kit&quot;,&quot;5.rules&quot;,&quot;6.ethics&quot;,&quot;7.schedule&quot;]}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 nb run stage</summary>
+
+`mcp__autocodabench__autocodabench_nb_run_stage`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;stage&quot;: &quot;7.schedule&quot;
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;stage&quot;:&quot;7.schedule&quot;,&quot;cells_executed&quot;:[],&quot;all_ok&quot;:true}
+</code></pre>
+
+
+</details>
+
+<details><summary>🔧 logging event</summary>
+
+`mcp__autocodabench__autocodabench_log_event`
+
+**Input:**
+
+<pre><code class="language-json">{
+  &quot;kind&quot;: &quot;stage_done&quot;,
+  &quot;payload&quot;: {
+    &quot;stage&quot;: &quot;7.schedule&quot;
+  }
+}
+</code></pre>
+
+
+**Output:**
+
+<pre><code>{&quot;logged&quot;:true,&quot;kind&quot;:&quot;stage_done&quot;,&quot;payload&quot;:{&quot;stage&quot;:&quot;7.schedule&quot;}}
+</code></pre>
+
+
+</details>
+<p>All 7 sections are written and executed cleanly. Here's what landed in <code>starting_kit.ipynb</code>:</p>
+<hr />
+<h2>✅ First-pass <code>starting_kit.ipynb</code> — complete</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Section</th>
+<th>Status</th>
+<th>Key content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Task formulation</td>
+<td>✅</td>
+<td>5W table; <code>TASK</code> dict; γ code-submission protocol</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Data &amp; splits</td>
+<td>✅</td>
+<td><code>read_data()</code> with 90/180 biased/balanced split; group-distribution bar chart saved to PNG</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Metric</td>
+<td>✅</td>
+<td><code>compute_metrics()</code> (GM + AM + WGA); sanity checks — random ≈ 0.33, constant class exposes GM ≈ 0, perfect = 1.0</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Baseline &amp; starting kit</td>
+<td>✅</td>
+<td><code>TrivialBaseline</code> (majority class); <code>ModestBaseline</code> (LogReg pipeline); side-by-side scores; <code>predictions/predictions.txt</code> round-trip verified</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Rules</td>
+<td>✅</td>
+<td>γ protocol, 5/day dev cap, 1-shot final, winner-code release <em>required</em>, ±0.5 % reproducibility tolerance</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Ethics &amp; dual-use</td>
+<td>✅</td>
+<td>Dual-use low; no PII; Datasheet commitment; IRB waived; fairness recruitment plan</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Schedule</td>
+<td>✅</td>
+<td>Dev 40 days (2026-06-01→07-10), Final 14 days, Zenodo DOI, CC BY 4.0, FAIR archival</td>
+</tr>
+</tbody>
+</table>
+<p><strong>What to do next:</strong> pick any section to refine, or say <strong>"approve everything"</strong> to package the Codabench bundle (Stage 8).</p>

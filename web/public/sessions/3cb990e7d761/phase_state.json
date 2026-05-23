@@ -1,0 +1,34 @@
+{
+  "session_id": "3cb990e7d761",
+  "updated_at": "2026-05-23T20:59:46Z",
+  "current": "bundle",
+  "next": null,
+  "can_advance": false,
+  "phases": [
+    {
+      "id": "plan",
+      "title": "\ud83d\udcdd Plan",
+      "artifact": "specs/implementation_plan.md",
+      "exists": true,
+      "status": "locked"
+    },
+    {
+      "id": "bundle",
+      "title": "\ud83d\udce6 Competition Creation",
+      "artifact": "bundle.zip",
+      "exists": false,
+      "status": "active"
+    }
+  ],
+  "context": {
+    "input_tokens": 38,
+    "output_tokens": 17696,
+    "max_tokens": 200000,
+    "pct": 0.0
+  },
+  "cost": {
+    "cumulative_usd": 1.1373,
+    "budget_usd": 5.0,
+    "pct": 22.7
+  }
+}
