@@ -226,6 +226,9 @@
         const sid = _currentSessionId();
         const panel = document.getElementById("ac-side-panel");
         if (!sid || !panel) return;
+        // Skip the network round-trip if the user has the panel
+        // collapsed — there's no visible content to update.
+        if (panel.classList.contains("ac-collapsed")) return;
         try {
             const r = await fetch(
                 `/public/sessions/${sid}/manifest.json?t=${Date.now()}`,
@@ -269,6 +272,20 @@
         }
     }
 
+    function _setPanelCollapsed(panel, collapsed) {
+        panel.classList.toggle("ac-collapsed", collapsed);
+        // Only reserve right-side body padding when the panel is open;
+        // otherwise the chat takes the full viewport width.
+        document.body.classList.toggle("ac-side-active", !collapsed);
+        const btn = panel.querySelector("#ac-side-collapse");
+        if (btn) {
+            btn.innerHTML = collapsed ? "📁 Workspace" : "›";
+            btn.title = collapsed
+                ? "Open the workspace panel (notebook, transcript, …)"
+                : "Collapse the workspace panel";
+        }
+    }
+
     function _injectSidePanel() {
         if (document.getElementById("ac-side-panel")) return;
         const sid = _currentSessionId();
@@ -292,7 +309,10 @@
                     sandbox="allow-same-origin"></iframe>
         `;
         document.body.appendChild(panel);
-        document.body.classList.add("ac-side-active");
+
+        // Start collapsed — chat takes the whole page. User opens the
+        // panel when they want to see the notebook / transcript / etc.
+        _setPanelCollapsed(panel, true);
 
         const iframe = panel.querySelector("#ac-side-iframe");
         panel.querySelector("#ac-side-refresh").addEventListener("click", () => {
@@ -300,10 +320,11 @@
             if (active) iframe.src = active.dataset.url + `?t=${Date.now()}`;
         });
         panel.querySelector("#ac-side-collapse").addEventListener("click", () => {
-            const collapsed = panel.classList.toggle("ac-collapsed");
-            document.body.classList.toggle("ac-side-active", !collapsed);
-            panel.querySelector("#ac-side-collapse").innerHTML =
-                collapsed ? "‹" : "›";
+            const becomingCollapsed = !panel.classList.contains("ac-collapsed");
+            _setPanelCollapsed(panel, becomingCollapsed);
+            // When opening, immediately fetch the latest manifest so
+            // the user doesn't see stale content.
+            if (!becomingCollapsed) _refreshSidePanelFromManifest();
         });
 
         // First fetch + then periodic refresh every 3.5 s. We

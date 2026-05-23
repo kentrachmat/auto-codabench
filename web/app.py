@@ -476,21 +476,15 @@ async def on_chat_start():
     await client.connect()
     cl.user_session.set("client", client)
 
-    # 3b. Stage-progress strip. Driven off events.jsonl: the agent
-    # logs `stage_started` / `stage_done` / `stage_approved` via
-    # autocodabench_log_event; _refresh_task_list scans the new
-    # events after each turn and bumps Task statuses accordingly.
-    task_list = cl.TaskList()
-    task_list.status = "Ready"
-    tasks_by_stage: dict[str, cl.Task] = {}
-    for stage, title in STAGE_TITLES:
-        t = cl.Task(title=title, status=cl.TaskStatus.READY)
-        tasks_by_stage[stage] = t
-        await task_list.add_task(t)
-    await task_list.send()
-    cl.user_session.set("task_list", task_list)
-    cl.user_session.set("tasks_by_stage", tasks_by_stage)
+    # 3b. Stage-progress strip is created LAZILY — only when the
+    # agent actually starts writing the notebook. During the roadmap
+    # conversation there's nothing to show progress for; making the
+    # strip visible from session start clutters the UI. See
+    # `_refresh_task_list` for the on-demand creation logic.
+    cl.user_session.set("task_list", None)
+    cl.user_session.set("tasks_by_stage", {})
     cl.user_session.set("events_cursor", 0)  # byte offset into events.jsonl
+    cl.user_session.set("show_progress", False)
 
     # 4. Greeting — this contains READY_PHRASE ("Tell me a competition
     # idea") which is the signal chat.js watches for to drop the banner
@@ -1574,28 +1568,26 @@ def _collect_side_files(run_dir: Path) -> list["cl.Text"]:
 
 
 async def _refresh_task_list(run_dir: Path) -> None:
-    """Drive the cl.TaskList off the new events in events.jsonl.
+    """Drive the cl.TaskList off events.jsonl — LAZY-create it on first build event.
 
-    The agent emits events via autocodabench_log_event(kind=...,
-    payload={"stage": "N.name", ...}). We tail events.jsonl from the
-    last byte cursor and bump task statuses:
+    The TaskList is created only when the agent actually starts
+    writing notebook sections (first `stage_started` event for any
+    of `1.task` through `7.schedule`). During the roadmap
+    conversation there's no progress to show, and showing the strip
+    clutters the UI.
 
+    Cursor-based tail: scans only events since the last call. Stage
+    status transitions:
       stage_started   → RUNNING
       stage_done      → DONE
-      stage_approved  → DONE (the user clicked Approve)
+      stage_approved  → DONE (user clicked Approve)
       stage_failed    → FAILED
-      session_ended   → no-op here; chat-end persistence handles it
-
-    Idempotent. Cursor-based tail means a long events.jsonl is read
-    once linearly over the session, not re-scanned per turn.
     """
-    task_list = cl.user_session.get("task_list")
-    tasks_by_stage: dict[str, cl.Task] = cl.user_session.get("tasks_by_stage") or {}
-    if task_list is None or not tasks_by_stage:
-        return
     events_path = run_dir / "events.jsonl"
     if not events_path.is_file():
         return
+
+    # --- Tail events.jsonl from last cursor ---
     cursor: int = int(cl.user_session.get("events_cursor") or 0)
     try:
         with events_path.open("r", encoding="utf-8") as f:
@@ -1607,16 +1599,61 @@ async def _refresh_task_list(run_dir: Path) -> None:
         return
     cl.user_session.set("events_cursor", new_cursor)
 
-    changed = False
-    any_running = False
+    # Parse new events once into a list.
+    parsed: list[dict] = []
     for line in new_text.splitlines():
         line = line.strip()
         if not line:
             continue
         try:
-            ev = json.loads(line)
+            parsed.append(json.loads(line))
         except Exception:
             continue
+
+    # --- Trigger "show progress" on the first build-event we see ---
+    show_progress = bool(cl.user_session.get("show_progress") or False)
+    if not show_progress:
+        for ev in parsed:
+            payload = ev.get("payload") or {}
+            stage = payload.get("stage")
+            if stage and stage in _STAGE_BY_ID:
+                si = _STAGE_BY_ID[stage]
+                if ev.get("kind") in ("stage_started", "stage_done", "stage_approved",
+                                      "stage_failed") and 1 <= si <= 8:
+                    show_progress = True
+                    cl.user_session.set("show_progress", True)
+                    break
+
+    # If we still haven't started building, no TaskList work needed.
+    if not show_progress:
+        # ...but the legacy implementation_plan.md gate can still fire
+        # for old sessions; check that.
+        await _refresh_legacy_bundle_gate(run_dir)
+        return
+
+    # --- Lazy-create TaskList on first build event ---
+    task_list = cl.user_session.get("task_list")
+    tasks_by_stage: dict[str, cl.Task] = cl.user_session.get("tasks_by_stage") or {}
+    if task_list is None:
+        task_list = cl.TaskList()
+        task_list.status = "Building starting kit"
+        tasks_by_stage = {}
+        for stage, title in STAGE_TITLES:
+            if stage == "0.roadmap":
+                continue  # Roadmap is conversation, not "progress"
+            t = cl.Task(title=title, status=cl.TaskStatus.READY)
+            tasks_by_stage[stage] = t
+            await task_list.add_task(t)
+        try:
+            await task_list.send()
+        except Exception as e:
+            log.warning("task_list send failed: %s", e)
+        cl.user_session.set("task_list", task_list)
+        cl.user_session.set("tasks_by_stage", tasks_by_stage)
+
+    # --- Apply status changes from the just-parsed events ---
+    changed = False
+    for ev in parsed:
         kind = ev.get("kind")
         payload = ev.get("payload") or {}
         stage = payload.get("stage")
@@ -1636,15 +1673,14 @@ async def _refresh_task_list(run_dir: Path) -> None:
                 task.status = cl.TaskStatus.FAILED
                 changed = True
 
-    # Reflect overall progress in the strip's title-line status.
+    # --- Update title-line status ---
     statuses = {t.status for t in tasks_by_stage.values()}
     if cl.TaskStatus.FAILED in statuses:
         new_top = "Stage failed"
     elif cl.TaskStatus.RUNNING in statuses:
-        new_top = "Running"
-        any_running = True
+        new_top = "Building starting kit"
     elif statuses == {cl.TaskStatus.DONE}:
-        new_top = "All stages done"
+        new_top = "All sections done"
     elif cl.TaskStatus.DONE in statuses:
         new_top = "In progress"
     else:
@@ -1659,17 +1695,11 @@ async def _refresh_task_list(run_dir: Path) -> None:
         except Exception as e:
             log.warning("task_list send failed: %s", e)
 
-    # Per-stage approval gates: any stage now marked DONE that hasn't
-    # had its gate fire yet → show the gate. Idempotent via
-    # `gates_offered` set in cl.user_session.
+    # Section-picker gate trigger.
     for stage_id, task in tasks_by_stage.items():
         if task.status == cl.TaskStatus.DONE:
             await _maybe_offer_stage_gate(run_dir, stage_id)
 
-    # Pre-PR4 fallback: until the orchestrator skill is rewritten to
-    # emit stage events, the old prose flow writes implementation_plan.md
-    # at the end. Treat that file's existence as "stage 7 done" so the
-    # new gate path still fires for legacy sessions. Idempotent.
     await _refresh_legacy_bundle_gate(run_dir)
 
 
