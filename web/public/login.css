@@ -297,202 +297,93 @@ button[data-ac-impl-button="cancel"] {
 
 
 /* ============================================================
- * Top phase bar — 3 pills (Plan / Starting Kit / Bundle) + a live
- * context-% chip + an Advance button. Driven entirely by polling
- * /public/sessions/<sid>/phase_state.json from chat.js. The hidden
- * cl.Action buttons that actually trigger phase transitions live
- * in a normal chat message and are CSS-hidden below.
+ * Phase pills — slim, black-background indicators that sit in the
+ * Chainlit header strip, same row as Readme / New chat. Just three
+ * pills (Plan / Starting Kit / Bundle); per-turn context-% and cost
+ * are surfaced in each assistant turn's footer, not in the header.
+ *
+ * Click an active pill: no-op (you're already there).
+ * Click a locked  pill: confirm → revert (discards downstream).
+ * Click the pending phase that's eligible to advance (state.next +
+ *   can_advance): triggers advance.
+ *
+ * The cl.Action buttons that actually trigger phase transitions
+ * live in a hidden chat message — chat.js click-simulates them.
  * ============================================================ */
 
-#ac-phase-bar {
-    position: fixed !important;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 9999;            /* under init banner (99999), above panel */
-    display: flex;
+.ac-phase-pills {
+    display: inline-flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 8px 14px 8px 16px;
-    height: 46px;
-    box-sizing: border-box;
-    background: color-mix(in oklab, Canvas 92%, currentColor 4%);
-    border-bottom: 1px solid color-mix(in oklab, currentColor 16%, transparent);
-    backdrop-filter: blur(8px);
+    gap: 4px;
+    padding: 4px 8px;
+    margin-right: 8px;
+    border-radius: 999px;
+    background: #0b0b0c;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
                  Roboto, Helvetica, Arial, sans-serif;
-    font-size: 13px;
-    color: CanvasText;
-}
-
-/* Reserve room at the top of the page for the bar so chat content
- * isn't hidden behind it. */
-body.ac-phase-bar-active {
-    padding-top: 46px;
-}
-
-.ac-pb-pills {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    overflow-x: auto;
-    flex: 1 1 auto;
-    min-width: 0;
-}
-
-.ac-pb-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border-radius: 999px;
-    border: 1px solid color-mix(in oklab, currentColor 18%, transparent);
-    background: Canvas;
-    color: CanvasText;
-    cursor: default;
-    font-size: 12.5px;
-    font-weight: 500;
     line-height: 1;
-    white-space: nowrap;
-    transition: transform 0.1s ease-out, box-shadow 0.1s ease-out;
-}
-.ac-pb-pill-icon { font-size: 13px; }
-.ac-pb-pill-num {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: color-mix(in oklab, currentColor 12%, transparent);
-    font-size: 11px;
-    font-weight: 700;
 }
 
-.ac-pb-pill-active {
-    background: linear-gradient(135deg, #16a34a 0%, #059669 100%);
-    border-color: #047857;
-    color: #fff;
-    font-weight: 700;
-    box-shadow: 0 2px 8px rgba(5, 150, 105, 0.30);
-}
-.ac-pb-pill-active .ac-pb-pill-num {
-    background: rgba(255, 255, 255, 0.30);
-    color: #fff;
-}
-
-.ac-pb-pill-locked {
-    cursor: pointer !important;
-    background: color-mix(in oklab, Canvas 88%, currentColor 8%);
-    border-color: color-mix(in oklab, currentColor 28%, transparent);
-}
-.ac-pb-pill-locked:hover {
-    background: color-mix(in oklab, Canvas 80%, currentColor 12%);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.10);
-}
-
-.ac-pb-pill-pending {
-    opacity: 0.55;
-}
-
-.ac-pb-sep {
-    color: color-mix(in oklab, currentColor 50%, transparent);
-    font-size: 14px;
-    font-weight: 700;
-    padding: 0 2px;
-    user-select: none;
-}
-
-.ac-pb-right {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex: 0 0 auto;
-}
-
-.ac-pb-advance {
-    padding: 6px 14px;
-    border-radius: 8px;
-    border: 1px solid #2563eb;
-    background: linear-gradient(90deg, #2563eb 0%, #7c3aed 100%);
-    color: #fff;
-    font-size: 12.5px;
-    font-weight: 700;
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
-    transition: transform 0.1s ease-out, filter 0.1s ease-out;
-    white-space: nowrap;
-}
-.ac-pb-advance:hover:not(:disabled) {
-    filter: brightness(1.05);
-    transform: translateY(-1px);
-}
-.ac-pb-advance:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    background: color-mix(in oklab, Canvas 82%, currentColor 10%);
-    border-color: color-mix(in oklab, currentColor 22%, transparent);
-    color: color-mix(in oklab, CanvasText 60%, transparent);
-    box-shadow: none;
-}
-
-.ac-pb-ctx, .ac-pb-cost {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 8px;
-    border-radius: 6px;
-    background: color-mix(in oklab, Canvas 82%, currentColor 6%);
-    border: 1px solid color-mix(in oklab, currentColor 14%, transparent);
-    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+.ac-pp {
+    appearance: none;
+    border: 1px solid transparent;
+    padding: 5px 10px;
+    border-radius: 999px;
     font-size: 11.5px;
-}
-.ac-pb-ctx-label {
-    color: color-mix(in oklab, CanvasText 65%, transparent);
-    font-size: 10.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-.ac-pb-ctx-bar {
-    display: inline-block;
-    width: 60px;
-    height: 6px;
-    border-radius: 3px;
-    background: color-mix(in oklab, currentColor 14%, transparent);
-    overflow: hidden;
-    position: relative;
-}
-.ac-pb-ctx-fill {
-    display: block;
-    height: 100%;
-    width: 0%;
-    background: #16a34a;
-    transition: width 0.3s ease-out, background 0.3s ease-out;
-}
-.ac-pb-ctx-fill[data-level="mid"]  { background: #d97706; }
-.ac-pb-ctx-fill[data-level="high"] { background: #dc2626; }
-.ac-pb-ctx-pct {
-    color: CanvasText;
     font-weight: 600;
-    min-width: 42px;
-    text-align: right;
+    line-height: 1;
+    cursor: default;
+    color: rgba(255, 255, 255, 0.55);
+    background: transparent;
+    white-space: nowrap;
+    transition: background 0.12s ease-out, color 0.12s ease-out,
+                transform 0.10s ease-out;
 }
 
-/* Phase bar should sit above the workspace panel so the panel doesn't
- * obscure it on narrow screens. Side panel currently uses 10000;
- * keep the bar at 9999 so the panel's collapse button stays clickable
- * but the bar still occupies the top strip. */
+/* Current phase: bright pill, accent ring. */
+.ac-pp-active {
+    background: #ffffff;
+    color: #0b0b0c;
+    border-color: #ffffff;
+    font-weight: 700;
+}
+
+/* Completed phase, click to revise. */
+.ac-pp-locked {
+    cursor: pointer;
+    color: rgba(255, 255, 255, 0.78);
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.10);
+}
+.ac-pp-locked:hover {
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+    transform: translateY(-0.5px);
+}
+
+/* Pending phase. Becomes clickable + accented when state.next +
+ * can_advance — the JS adds the same class but a ▶ glyph appears in
+ * the label, so the user has a visual cue without an extra button. */
+.ac-pp-pending {
+    color: rgba(255, 255, 255, 0.40);
+}
+.ac-pp-pending[title^="Click to advance"] {
+    color: #fff;
+    background: linear-gradient(90deg, #2563eb 0%, #7c3aed 100%);
+    border-color: rgba(255, 255, 255, 0.18);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(37, 99, 235, 0.45);
+}
+.ac-pp-pending[title^="Click to advance"]:hover {
+    filter: brightness(1.08);
+    transform: translateY(-0.5px);
+}
 
 /* Hide the cl.Action buttons we use only as click targets for the
- * phase bar. They're emitted with synthetic labels like
- * "AC_ADVANCE::kit" / "AC_REVERT::plan"; we tag them in chat.js as
- * data-ac-phase-nav="advance|revert" and hide them — and their
- * parent message — completely from the chat UI.
- *
- * Caveat: Chainlit nests actions under deep DOM structures, so we
- * collapse the closest message-card ancestor too via :has(). */
+ * phase pills. Labels like "AC_ADVANCE::kit" / "AC_REVERT::plan"
+ * are tagged in chat.js as data-ac-phase-nav="advance|revert" and
+ * hidden here — and so is their host message card via :has(). */
 button[data-ac-phase-nav] {
     position: absolute !important;
     width: 1px !important;
@@ -505,11 +396,6 @@ button[data-ac-phase-nav] {
     opacity: 0 !important;
     pointer-events: auto !important; /* still clickable from JS */
 }
-/* Best-effort: hide the host message-card that holds the phase-nav
- * buttons. Chainlit doesn't expose a stable class for the card, so
- * we target the closest container that has a phase-nav button. The
- * placeholder content uses italic text starting with "phase controls"
- * — we hide *any* such container to be safe. */
 *:has(> button[data-ac-phase-nav]),
 [class*="message"]:has(button[data-ac-phase-nav]) {
     display: none !important;
@@ -532,9 +418,7 @@ button[data-ac-phase-nav] {
  * just offscreen, and might intercept clicks" failure mode. */
 #ac-side-panel {
     position: fixed !important;
-    /* Sit below the 46 px phase bar so its pills + advance button
-     * remain reachable above the panel's left edge. */
-    top: 46px !important;
+    top: 0 !important;
     right: 0 !important;
     bottom: 0 !important;
     /* 55vw clamped to [480, 900] px so the notebook has real reading

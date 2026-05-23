@@ -782,10 +782,18 @@ async def on_message(msg: cl.Message):
                     cl.user_session.set("last_input_tokens", in_tok)
                 if out_tok:
                     cl.user_session.set("last_output_tokens", out_tok)
-                if cost:
+                # Per-turn footer: cost + cumulative + context %. The
+                # header-row phase pills intentionally don't carry this
+                # info — too noisy on every paint. The user sees a
+                # one-line summary at the end of each assistant turn
+                # instead, same place the Claude Code CLI puts it.
+                if cost or in_tok:
+                    ctx_pct = (100.0 * in_tok / CONTEXT_WINDOW_TOKENS
+                               if in_tok else 0.0)
                     await response_msg.stream_token(
-                        f"\n\n_turn cost ≈ ${cost:.3f}; session total ≈ ${cum:.2f} / "
-                        f"${MAX_USD_PER_SESSION:.2f}_"
+                        f"\n\n_turn ≈ ${cost:.3f} · session "
+                        f"${cum:.2f} / ${MAX_USD_PER_SESSION:.2f} · "
+                        f"ctx {ctx_pct:.1f}% ({in_tok:,} tok)_"
                     )
                 # Persist a per-turn cost line so we can audit spend
                 # offline (one JSON object per line, easy to aggregate).
@@ -1581,10 +1589,13 @@ async def _stream_one_turn(run_dir: Path, prompt_text: str) -> None:
                     cl.user_session.set("last_input_tokens", in_tok)
                 if out_tok:
                     cl.user_session.set("last_output_tokens", out_tok)
-                if cost:
+                if cost or in_tok:
+                    ctx_pct = (100.0 * in_tok / CONTEXT_WINDOW_TOKENS
+                               if in_tok else 0.0)
                     await response_msg.stream_token(
-                        f"\n\n_turn cost ≈ ${cost:.3f}; session total ≈ "
-                        f"${cum:.2f} / ${MAX_USD_PER_SESSION:.2f}_"
+                        f"\n\n_turn ≈ ${cost:.3f} · session "
+                        f"${cum:.2f} / ${MAX_USD_PER_SESSION:.2f} · "
+                        f"ctx {ctx_pct:.1f}% ({in_tok:,} tok)_"
                     )
                 _log_cost(run_dir, turn_cost=cost, cumulative=cum)
     except Exception as e:

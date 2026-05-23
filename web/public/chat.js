@@ -232,52 +232,76 @@
 
 
     // ---------------------------------------------------------------
-    // (5b) PHASE BAR — top-of-page sticky bar with 3 pills + advance
-    //     button + live context-% chip. Driven by phase_state.json
-    //     which app.py writes after every turn.
+    // (5b) PHASE PILLS in the Chainlit header strip.
+    //
+    // Three pills (Plan / Starting Kit / Bundle) injected as siblings
+    // of the existing "Readme" + "New chat" buttons in Chainlit's
+    // header. Black background, white text — pure status indicator;
+    // clicking advances or reverts. Per-turn context-% and cost are
+    // surfaced inline in each assistant turn's footer (app.py), not
+    // here — the header stays uncluttered.
+    //
+    // Driven by polling /public/sessions/<sid>/phase_state.json.
     // ---------------------------------------------------------------
 
     const PHASE_ORDER = ["plan", "kit", "bundle"];
-    let _lastPhaseStateJson = "";
+    let _lastPhasePillsSig = "";
 
-    function _injectPhaseBar() {
-        if (document.getElementById("ac-phase-bar")) return;
-        if (!document.querySelector("textarea")) return; // login screen
-        if (!_currentSessionId()) return;
-        const bar = document.createElement("div");
-        bar.id = "ac-phase-bar";
-        bar.innerHTML = `
-            <div class="ac-pb-pills" role="tablist"></div>
-            <div class="ac-pb-right">
-                <button type="button" id="ac-pb-advance"
-                        class="ac-pb-advance" disabled
-                        title="Advance to the next phase">▶ Advance</button>
-                <span class="ac-pb-ctx" title="Approximate context window usage">
-                    <span class="ac-pb-ctx-label">ctx</span>
-                    <span class="ac-pb-ctx-bar"><span class="ac-pb-ctx-fill"></span></span>
-                    <span class="ac-pb-ctx-pct">—</span>
-                </span>
-                <span class="ac-pb-cost" title="Session cost (USD)">
-                    <span class="ac-pb-ctx-label">$</span>
-                    <span class="ac-pb-ctx-pct ac-pb-cost-val">—</span>
-                </span>
-            </div>
-        `;
-        document.body.appendChild(bar);
-        document.body.classList.add("ac-phase-bar-active");
-
-        bar.querySelector("#ac-pb-advance").addEventListener("click", (e) => {
-            e.stopPropagation();
-            const target = e.currentTarget.dataset.target;
-            if (!target) return;
-            _clickHiddenPhaseNav("advance", target);
+    // Locate the host strip in Chainlit's chrome where the
+    // "Readme" / "New chat" buttons live. Strategy: find any of those
+    // buttons by visible text, then walk up to the nearest <header>
+    // or to the parent that holds both. We then insert our pills
+    // BEFORE the "Readme" button so the pills sit on the left of the
+    // existing controls.
+    function _findHeaderHost() {
+        const candidates = [];
+        document.querySelectorAll("a, button").forEach((el) => {
+            const t = (el.textContent || "").trim();
+            if (t === "Readme" || t === "New Chat" || t === "New chat") {
+                candidates.push(el);
+            }
         });
+        if (candidates.length === 0) return null;
+        // Use the LEFTMOST candidate (lowest .getBoundingClientRect().x)
+        // — that's normally the Readme link in the header right cluster.
+        candidates.sort((a, b) => {
+            const ra = a.getBoundingClientRect();
+            const rb = b.getBoundingClientRect();
+            return ra.x - rb.x;
+        });
+        const anchor = candidates[0];
+        // Common parent that contains anchor + a few siblings. Walk up
+        // a couple of levels until we hit a flex/row container.
+        let host = anchor.parentElement;
+        for (let i = 0; i < 3 && host; i += 1) {
+            const cs = window.getComputedStyle(host);
+            if ((cs.display === "flex" || cs.display === "inline-flex")
+                && cs.flexDirection !== "column") return host;
+            host = host.parentElement;
+        }
+        return anchor.parentElement;
     }
 
-    async function _refreshPhaseBarFromState() {
+    function _ensurePhasePills() {
+        if (document.getElementById("ac-phase-pills")) return;
+        if (!document.querySelector("textarea")) return; // login
+        if (!_currentSessionId()) return;
+        const host = _findHeaderHost();
+        if (!host) return;
+        const pills = document.createElement("div");
+        pills.id = "ac-phase-pills";
+        pills.className = "ac-phase-pills";
+        // Insert as the FIRST child of the header cluster so the pills
+        // appear to the left of the existing buttons.
+        host.insertBefore(pills, host.firstChild);
+    }
+
+    async function _refreshPhasePillsFromState() {
         const sid = _currentSessionId();
-        const bar = document.getElementById("ac-phase-bar");
-        if (!sid || !bar) return;
+        if (!sid) return;
+        _ensurePhasePills();
+        const pillsHost = document.getElementById("ac-phase-pills");
+        if (!pillsHost) return;
         try {
             const r = await fetch(
                 `/public/sessions/${sid}/phase_state.json?t=${Date.now()}`,
@@ -285,34 +309,36 @@
             );
             if (!r.ok) return;
             const state = await r.json();
-            // Skip rebuilds when state hasn't changed.
+            // Skip rebuilds when phase status hasn't changed (don't
+            // re-render on every cost/ctx tick).
             const sig = JSON.stringify({
-                p: state.current, n: state.next, c: state.can_advance,
-                ph: (state.phases || []).map((x) => [x.id, x.status]),
-                ctx: state.context?.pct, cost: state.cost?.cumulative_usd,
+                cur:   state.current,
+                nxt:   state.next,
+                can:   state.can_advance,
+                items: (state.phases || []).map((x) => [x.id, x.status]),
             });
-            if (sig === _lastPhaseStateJson) return;
-            _lastPhaseStateJson = sig;
+            if (sig === _lastPhasePillsSig) return;
+            _lastPhasePillsSig = sig;
 
-            // --- pills ---
-            const pillsHost = bar.querySelector(".ac-pb-pills");
             pillsHost.innerHTML = "";
             (state.phases || []).forEach((ph, idx) => {
                 const pill = document.createElement("button");
                 pill.type = "button";
-                pill.className = "ac-pb-pill ac-pb-pill-" + ph.status;
-                pill.dataset.phaseId = ph.id;
+                pill.className = "ac-pp ac-pp-" + ph.status;
+                pill.dataset.phaseId     = ph.id;
                 pill.dataset.phaseStatus = ph.status;
-                let icon;
-                if (ph.status === "active")        icon = "🟢";
-                else if (ph.status === "locked")   icon = "🔒";
-                else                                icon = "○";
-                pill.innerHTML = `
-                    <span class="ac-pb-pill-icon">${icon}</span>
-                    <span class="ac-pb-pill-num">${idx + 1}</span>
-                    <span class="ac-pb-pill-title">${ph.title}</span>
-                `;
-                if (ph.status === "locked") {
+                const isAdvanceTarget =
+                    (ph.status === "pending"
+                     && state.next === ph.id
+                     && state.can_advance);
+                const num = idx + 1;
+                const lockIcon = (ph.status === "locked") ? " 🔒" : "";
+                const advIcon  = isAdvanceTarget ? " ▶" : "";
+                pill.textContent = `${num}. ${ph.title}${lockIcon}${advIcon}`;
+                // Tooltips + click behavior:
+                if (ph.status === "active") {
+                    pill.title = "Currently in " + ph.title;
+                } else if (ph.status === "locked") {
                     pill.title = "Click to revise " + ph.title +
                         " (discards everything after this phase)";
                     pill.addEventListener("click", () => {
@@ -321,69 +347,21 @@
                             "Everything in later phases will be discarded " +
                             "(the kit notebook / bundle zip will be wiped " +
                             "and regenerated when you advance again). " +
-                            "The " + ph.title + " artifact itself is preserved " +
-                            "so you can edit it.");
+                            "The " + ph.title + " artifact itself is " +
+                            "preserved so you can edit it.");
                         if (!ok) return;
                         _clickHiddenPhaseNav("revert", ph.id);
                     });
-                } else if (ph.status === "pending") {
-                    pill.title = "Complete the current phase first";
+                } else if (isAdvanceTarget) {
+                    pill.title = "Click to advance to " + ph.title;
+                    pill.addEventListener("click", () => {
+                        _clickHiddenPhaseNav("advance", ph.id);
+                    });
                 } else {
-                    pill.title = "Currently in " + ph.title;
+                    pill.title = "Complete the current phase first";
                 }
                 pillsHost.appendChild(pill);
-                if (idx < (state.phases.length - 1)) {
-                    const sep = document.createElement("span");
-                    sep.className = "ac-pb-sep";
-                    sep.textContent = "→";
-                    pillsHost.appendChild(sep);
-                }
             });
-
-            // --- advance button ---
-            const adv = bar.querySelector("#ac-pb-advance");
-            if (state.next && state.can_advance) {
-                adv.disabled = false;
-                adv.dataset.target = state.next;
-                const nextPh = (state.phases || []).find(
-                    (x) => x.id === state.next);
-                adv.textContent = "▶ Advance to " + (nextPh?.title || state.next);
-                adv.title = "Click to advance to " + (nextPh?.title || state.next);
-            } else {
-                adv.disabled = true;
-                adv.dataset.target = "";
-                if (!state.next) {
-                    adv.textContent = "✓ Final phase";
-                    adv.title = "You're in the last phase.";
-                } else {
-                    const curPh = (state.phases || []).find(
-                        (x) => x.id === state.current);
-                    adv.textContent = "▶ Advance";
-                    adv.title = "Finish " + (curPh?.title || state.current) +
-                                " first — its artifact is missing.";
-                }
-            }
-
-            // --- context chip ---
-            const pct = state.context?.pct || 0;
-            const fill = bar.querySelector(".ac-pb-ctx-fill");
-            const pctEl = bar.querySelector(".ac-pb-ctx-pct");
-            if (fill && pctEl) {
-                fill.style.width = Math.min(100, Math.max(0, pct)) + "%";
-                pctEl.textContent = pct.toFixed(1) + "%";
-                fill.dataset.level = pct < 50 ? "low"
-                                   : pct < 80 ? "mid"
-                                   : "high";
-            }
-
-            // --- cost chip ---
-            const costEl = bar.querySelector(".ac-pb-cost-val");
-            if (costEl) {
-                const c = state.cost?.cumulative_usd || 0;
-                const b = state.cost?.budget_usd     || 0;
-                costEl.textContent = "$" + c.toFixed(2) +
-                                     " / $" + b.toFixed(2);
-            }
         } catch (e) {
             // Silent — state file may not exist yet on first paint.
         }
@@ -688,8 +666,8 @@
 
     function tick() {
         syncInitGate();   // run first so the lock is up before anything else
-        _injectSidePanel();   // sci-space-style persistent workspace panel
-        _injectPhaseBar();    // top-of-page 3-phase bar (driven by JSON)
+        _injectSidePanel();      // sci-space-style persistent workspace panel
+        _ensurePhasePills();     // header-row phase pills (slim, no chips)
         tagSteps();
         syncRunningDots();
         injectInlineHelp();
@@ -705,9 +683,9 @@
         }
     }
 
-    // Poll the phase state JSON on its own ~2 s timer (faster than the
-    // workspace iframe so pill updates feel snappy).
-    setInterval(_refreshPhaseBarFromState, 2000);
+    // Poll the phase state JSON on its own ~2 s timer so pill updates
+    // feel snappy without re-fetching the full workspace manifest.
+    setInterval(_refreshPhasePillsFromState, 2000);
 
     // Apply the lock as soon as possible — ideally before React mounts
     // the chat input. We call tick() once synchronously here, then again
