@@ -921,15 +921,14 @@ def _delete_phase_artifact(run_dir: Path, phase: str) -> None:
     """
     try:
         if phase == PHASE_BUNDLE:
-            # The agent's zip_bundle writes into
-            # auto_codabench/bundles/<slug>/. We don't track the slug
-            # here — nuke any zips so the next bundle phase regenerates.
-            bundles_root = REPO_ROOT / "auto_codabench" / "bundles"
-            if bundles_root.is_dir():
-                for d in bundles_root.iterdir():
-                    if d.is_dir():
-                        shutil.rmtree(d, ignore_errors=True)
-            # Also drop the per-session bundle.zip copy.
+            # Bundles now live under <run>/bundles/<slug>/. Wipe ONLY
+            # this session's bundles dir — never touch the global
+            # auto_codabench/bundles/ tree, which could belong to a
+            # different concurrent session.
+            session_bundles = run_dir / "bundles"
+            if session_bundles.is_dir():
+                shutil.rmtree(session_bundles, ignore_errors=True)
+            # Also drop this session's public bundle.zip copy.
             sid = cl.user_session.get("session_id") or ""
             if sid:
                 pub = _PUBLIC_SESSIONS / sid / "bundle.zip"
@@ -1453,16 +1452,19 @@ def _public_session_dir(session_id: str) -> Path:
 
 
 def _find_bundle_zip(run_dir: Path) -> Path | None:
-    """Locate the most-recent .zip the agent's stage-8 packaging wrote.
+    """Locate the .zip that THIS session's Phase 2 produced.
 
-    Bundles live under `auto_codabench/bundles/<slug>/<slug>.zip` (the
-    bundle-write tools default), not inside the run dir. We pick the
-    most-recently-modified one — there's normally one slug per run.
+    Bundles now live under `<run>/bundles/<slug>/<slug>.zip` thanks to
+    the per-session `resolve_bundle_dir` change (MCP config.py). Two
+    concurrent web sessions therefore can't collide. We still pick the
+    most-recently-modified zip *within this session* in case the user
+    reverted and re-advanced — there's almost always one slug per
+    session, but the deduping keeps things deterministic.
     """
-    bundles_root = REPO_ROOT / "auto_codabench" / "bundles"
-    if not bundles_root.is_dir():
+    session_bundles = run_dir / "bundles"
+    if not session_bundles.is_dir():
         return None
-    candidates = list(bundles_root.glob("*/*.zip"))
+    candidates = list(session_bundles.glob("*/*.zip"))
     if not candidates:
         return None
     return max(candidates, key=lambda p: p.stat().st_mtime)

@@ -267,7 +267,28 @@ def open_run(slug: str | None = None, *, branch_id: str | None = None, runtime_i
 
 
 def current_run() -> Path | None:
-    return _current_run
+    """Return the active run dir.
+
+    Adopts `AUTOCODABENCH_RUN_DIR` if it's set, exists, and contains a
+    meta.json — this matters for fresh MCP subprocesses spawned by the
+    web layer on phase transitions: each new agent inherits the env
+    var from the parent but starts with `_current_run = None`. Without
+    this adoption, the first `current_run()` call would return None and
+    the agent might fall through to globbing / the LATEST symlink, which
+    under concurrent web sessions points at whichever session was opened
+    most recently — not necessarily this agent's session.
+    """
+    global _current_run
+    if _current_run is not None:
+        return _current_run
+    inherited = os.environ.get("AUTOCODABENCH_RUN_DIR")
+    if (inherited
+        and Path(inherited).is_dir()
+        and (Path(inherited) / "meta.json").exists()):
+        with _state_lock:
+            _current_run = Path(inherited).resolve()
+        return _current_run
+    return None
 
 
 def require_run() -> Path | None:

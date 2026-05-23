@@ -36,8 +36,25 @@ BUNDLE_LAYOUT = {
 
 
 def resolve_bundle_dir(slug: str, root_dir: str | None = None) -> Path:
-    """Return the absolute path to a bundle root, creating no directories."""
-    root = Path(root_dir).resolve() if root_dir else DEFAULT_BUNDLES_ROOT
+    """Return the absolute path to a bundle root, creating no directories.
+
+    Resolution order:
+      1. Explicit `root_dir` arg (typically only the CLI passes this).
+      2. `<AUTOCODABENCH_RUN_DIR>/bundles/<slug>/` if the env var is set
+         and points to a valid run dir. This is the web-UI path —
+         scoping bundles per-session prevents concurrent sessions from
+         clobbering each other's zips.
+      3. Global `DEFAULT_BUNDLES_ROOT` as a final fallback (no active
+         run, e.g. one-off CLI usage).
+    """
+    if root_dir:
+        root = Path(root_dir).resolve()
+    else:
+        inherited = os.environ.get("AUTOCODABENCH_RUN_DIR")
+        if inherited and Path(inherited).is_dir():
+            root = (Path(inherited).resolve() / "bundles")
+        else:
+            root = DEFAULT_BUNDLES_ROOT
     if not slug or "/" in slug or "\\" in slug or slug.startswith("."):
         raise ValueError(f"Invalid bundle slug: {slug!r}")
     return root / slug
