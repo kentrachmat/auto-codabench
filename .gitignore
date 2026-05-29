@@ -10,6 +10,8 @@ __pycache__/
 auto_codabench/bundles/
 # Claude Code's local skill/plugin symlinks.
 .claude/
+# Local MCP server config (machine-specific paths + personal mailto).
+.mcp.json
 logs/
 auto_codabench/runs/*/
 auto_codabench/runs/LATEST
