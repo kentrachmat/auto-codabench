@@ -33,3 +33,7 @@ web/.files/
 # Per-session web runtime artifacts (manifest/plan/transcript/bundle HTML+zip).
 # Written at runtime by web/app.py; never source.
 web/public/sessions/
+# Experimental work lives on its own branches (e.g. experiment_test-bundle-creation).
+# Master should never carry experiment scaffolding, datasets, or per-run outputs.
+# Switch to the relevant experiment branch to see / commit experiment files.
+experiments/
