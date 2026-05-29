@@ -62,6 +62,154 @@ auto_codabench/
 
 ---
 
+## System diagrams
+
+These are the canonical pictures of how the pieces fit together. If
+you're editing the package, start here.
+
+### Runtime architecture
+
+What runs where during a live web session.
+
+```mermaid
+flowchart LR
+  user["User browser"]
+  user -- "HTTPS / WebSocket" --> web
+
+  subgraph host["HF Space container (Docker SDK)"]
+    web["Chainlit UI<br/>web/app.py<br/>(FastAPI + Chainlit on :7860)"]
+    sdk["ClaudeSDKClient<br/>(rebuilt at every phase transition)"]
+    web --> sdk
+
+    subgraph mcps["MCP subprocesses (stdio, per Chainlit session)"]
+      acm["autocodabench MCP<br/>python -m auto_codabench.mcp_server.server"]
+      alex["alex-mcp<br/>OpenAlex / PubMed / ORCID"]
+    end
+    sdk -- "stdio" --> acm
+    sdk -- "stdio" --> alex
+
+    runs[("runs/&lt;sid&gt;/<br/>events.jsonl<br/>specs/implementation_plan.md<br/>bundles/&lt;slug&gt;/<br/>tool_calls/NNNN_*.json")]
+    acm -- "writes" --> runs
+
+    pub["POST /ac/upload-codabench<br/>(FastAPI route, no LLM)"]
+    web --> pub
+  end
+
+  sdk -- "messages.stream" --> anthropic[/"Anthropic API<br/>api.anthropic.com"/]
+  pub -- "REST upload" --> codabench[/"Codabench<br/>www.codabench.org"/]
+
+  subgraph skills["Skills (loaded by Claude on description / explicit /name match)"]
+    plan_skill["plan/SKILL.md<br/>Phase 1 driver"]
+    impl_skill["autocodabench-implement/SKILL.md<br/>Phase 2 driver"]
+    comp["competition-design/SKILL.md<br/>Pavão book reference"]
+    cb["codabench-bundle/SKILL.md<br/>Codabench schema reference"]
+  end
+  sdk -. "Phase 1 loads" .-> plan_skill
+  sdk -. "Phase 2 loads" .-> impl_skill
+  plan_skill -. "cites" .-> comp
+  impl_skill -. "cites" .-> cb
+  impl_skill -. "cites (defaults)" .-> comp
+```
+
+Key things this picture encodes:
+
+- **One ClaudeSDKClient per phase**, not per session. The phase
+  transition disconnects the SDK and stands up a fresh one with a
+  new system prompt and tool allowlist. The Phase 1 chat history is
+  dropped at that point — only the locked plan markdown carries
+  forward.
+- **Two MCP subprocesses per Chainlit session**: `autocodabench` (the
+  bundle authoring tools, defined in this package) and `alex-mcp` (a
+  third-party OpenAlex/ORCID lookup tool, installed via
+  `git+https://github.com/drAbreu/alex-mcp.git@v4.8.2`).
+- **The run directory is the persistence boundary.** Everything that
+  needs to outlive the agent (events, tool-call audit, plan,
+  bundle) lives at `runs/<sid>/`. The MCP server is the only writer.
+- **Codabench upload doesn't go through the LLM.** The Publish form
+  in the workspace panel POSTs to `/ac/upload-codabench`, which calls
+  the REST API directly. The `autocodabench_upload_bundle` MCP tool
+  exists as a CLI alternative — see
+  [`autocodabench-implement/README.md` §"Upload only on explicit user request"](skills/autocodabench-implement/README.md#design-rationale).
+- **Skills are not always loaded.** Claude indexes the `description:`
+  frontmatter of every available skill and loads matching ones on
+  intent (or when the user types `/<skill-name>` explicitly). The
+  driver skills (plan, autocodabench-implement) cite the knowledge
+  skills (competition-design, codabench-bundle) — each
+  per-skill README documents the citation map.
+
+### Phase 1 → Phase 2 session sequence
+
+What a single end-to-end web session looks like, with the cost-saving
+phase reset visible.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant W as Chainlit<br/>(web/app.py)
+  participant C1 as ClaudeSDK #1<br/>(Phase 1)
+  participant M as autocodabench MCP<br/>(subprocess)
+  participant A as Anthropic API
+  participant C2 as ClaudeSDK #2<br/>(Phase 2)
+  participant CB as Codabench<br/>(REST)
+
+  U->>W: "I want a competition on X"
+  W->>C1: start session<br/>(Phase 1 prompt + autocodabench-plan skill)
+  C1->>M: autocodabench_open_run(slug)
+  M-->>M: mkdir runs/<sid>/
+  C1->>A: messages.stream — roadmap question
+  A-->>C1: roadmap + citations
+  C1-->>U: 7-section table + 2 scope questions
+
+  loop 1–2 turns
+    U->>C1: scope answer
+    C1->>A: refine
+    A-->>C1: draft plan
+  end
+
+  C1->>M: autocodabench_snapshot_spec(<br/>  name="implementation_plan",<br/>  body=md)
+  M-->>M: write runs/<sid>/specs/implementation_plan.md
+  C1-->>U: ✅ Plan ready — click "Advance to Phase 2"
+
+  U->>W: click "Advance to Phase 2"
+  W->>C1: disconnect (chat history dropped here)
+  W->>C2: NEW session<br/>(Phase 2 prompt + autocodabench-implement skill)
+  Note over C2: zero input tokens from Phase 1 — the only carrier is the plan markdown
+  C2->>M: autocodabench_current_run() (adopts AUTOCODABENCH_RUN_DIR)
+  C2->>M: Read implementation_plan.md
+
+  C2->>M: autocodabench_init_bundle
+  C2->>M: autocodabench_write_scoring_program
+  C2->>M: autocodabench_write_solution
+  C2->>M: autocodabench_write_page × 4
+  C2->>M: autocodabench_attach_data × 3
+  C2->>M: autocodabench_write_competition_yaml
+
+  loop up to 3 retries
+    C2->>M: autocodabench_validate_bundle
+    M-->>C2: ok / {issues: [...]}
+  end
+
+  C2->>M: autocodabench_zip_bundle
+  M-->>C2: {zip_path}
+  C2-->>U: bundle ready + download link
+
+  opt user types "publish" (or fills the Publish form)
+    Note over W,CB: The Publish form goes W→CB directly, bypassing the LLM.<br/>The "publish" chat phrase goes C2→M→CB instead.
+    C2->>M: autocodabench_upload_bundle
+    M->>CB: REST POST /competitions/upload
+    CB-->>M: {competition_id, competition_url}
+    M-->>C2: {competition_url}
+    C2-->>U: live competition link
+  end
+```
+
+The diagrams above are kept here (rather than in the root README)
+because every link in them is a path inside this package — they read
+naturally from this directory.
+
+---
+
 ## MCP tools
 
 14 tools total. The web app's allowlist exposes a subset per phase
@@ -157,12 +305,23 @@ frontmatter (`name`, `description`). Claude loads them when the
 description matches user intent, or when the user types
 `/<skill-name>` explicitly.
 
-- `autocodabench-plan` — Phase 1 driver. Keep the hard rules at the
-  top stable; the rest of the body can evolve.
-- `autocodabench-implement` — Phase 2 driver. Reads the plan,
-  produces a bundle.
-- `competition-design`, `codabench-bundle` — pulled in by the two
-  drivers as on-demand reference material.
+There are two **driver** skills (orchestration) and two **knowledge**
+skills (reference). Each has a sibling `README.md` next to its
+`SKILL.md` documenting provenance and design rationale — read those
+when you're editing the skill.
+
+| Skill | Kind | Source | README |
+|-------|------|--------|--------|
+| `autocodabench-plan`      | driver (Phase 1) | derived (sequencer over competition-design) | [`skills/plan/README.md`](skills/plan/README.md) |
+| `autocodabench-implement` | driver (Phase 2) | derived (sequencer over codabench-bundle)   | [`skills/autocodabench-implement/README.md`](skills/autocodabench-implement/README.md) |
+| `competition-design`      | knowledge        | [Pavão et al. (2024) *AI Competitions and Benchmarks*][book] | [`skills/competition-design/README.md`](skills/competition-design/README.md) |
+| `codabench-bundle`        | knowledge        | [Codabench docs (develop branch)][cbdocs]                    | [`skills/codabench-bundle/README.md`](skills/codabench-bundle/README.md) |
+
+[book]: https://ai-competitions-book.github.io/ai-competitions-book-full-project.pdf
+[cbdocs]: https://github.com/codalab/codabench/tree/develop/documentation
+
+The drivers orchestrate; the knowledge skills are quoted. See the
+runtime architecture diagram above for which loads which.
 
 For Claude Code project-scoped skills, drop them under
 `.claude/skills/`. For globally-available skills, symlink into

@@ -36,6 +36,9 @@ idea and walks you through two phases to a ready-to-upload Codabench
 | Wiring the CLI (Claude Desktop / Claude Code) | [`auto_codabench/INSTRUCTION_FOR_USER.md`](auto_codabench/INSTRUCTION_FOR_USER.md) §B |
 | Deploying the HF Space (operator) | [`web/README.md`](web/README.md) |
 | Hacking the package internals | [`auto_codabench/README.md`](auto_codabench/README.md) |
+| **System diagrams** (architecture + Phase 1→2 sequence) | [`auto_codabench/README.md` § System diagrams](auto_codabench/README.md#system-diagrams) |
+| **Skill provenance** (where each `SKILL.md` came from, why) | [`auto_codabench/skills/<name>/README.md`](auto_codabench/skills/) — one per skill |
+| Test harness around the package | [`experiments/bundle_creation_test/README.md`](experiments/bundle_creation_test/README.md) |
 
 ## What's where
 
