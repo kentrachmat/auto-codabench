@@ -389,7 +389,7 @@ score_file = os.path.join(output_dir, 'scores.json')
 html_file  = os.path.join(output_dir, 'detailed_results.html')  # optional
 ```
 
-*NOTE:* use two sets of paths when creating scoring program, set 1 to be used by Codabench, set 2 to be used locally for testing the scripts. To check a scoring template example, see `examples/scoring.py`
+*NOTE:* use two sets of paths when creating scoring program, set 1 to be used by Codabench, set 2 to be used locally for testing the scripts. To check a scoring template example, see `auto_codabench/examples/scoring.py`
 
 ### Outputs the scoring program must write
 
@@ -429,7 +429,7 @@ The positional args by convention:
 
 Passing these as args is **optional** but conventional; the script can also just hardcode them.
 
-*NOTE:* use two sets of paths when creating ingestion program, set 1 to be used by Codabench, set 2 to be used locally for testing the scripts. To check an ingestion template example, see `examples/ingestion.py`
+*NOTE:* use two sets of paths when creating ingestion program, set 1 to be used by Codabench, set 2 to be used locally for testing the scripts. To check an ingestion template example, see `auto_codabench/examples/ingestion.py`
 
 ### Filesystem the ingestion step sees
 
