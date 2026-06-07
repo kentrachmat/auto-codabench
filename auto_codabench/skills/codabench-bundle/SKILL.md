@@ -15,7 +15,7 @@ A Codabench competition bundle is **a zip file** containing a top-level
 the zip server-side; everything the bundle declares must resolve to a
 file path relative to `competition.yaml`.
 
-Set `version: 2` at the top of every new bundle. v1.5 is legacy.
+Set `version: 2` at the top of every new bundle. v1 and v1.5 are legacy.
 
 ---
 
@@ -42,9 +42,9 @@ my_competition/                       # the directory you will zip the CONTENTS 
 ├── ingestion_program/                # required only for code-submission tasks
 │   ├── metadata.yaml                 # has a `command:` key, see §8
 │   └── ingestion.py
-├── input_data/                       # data the prediction step sees
+├── input_data/                       # data used by ingestion program/prediction step
 │   └── ...                           # mounted at /app/input_data on the worker
-├── reference_data/                   # ground truth, only the scorer sees it
+├── reference_data/                   # ground truth, only the scoring program sees it
 │   └── truth.csv                     # mounted at /app/input/ref
 ├── solutions/                        # example/baseline submissions
 │   ├── solution1.zip
@@ -375,7 +375,7 @@ Quoted from `Submission-Docker-Container-Layout.md`:
 | `/app/input/ref/`       | Reference (truth) data. Only available on scoring step. Not visible to submissions.                    |
 | `/app/input/res/`       | Predictions / output from the prediction step (or directly from a result submission).                  |
 | `/app/shared/`          | Shared dir between ingestion program and submission (only when ingestion runs during scoring).         |
-| `/app/input_data/`      | Task input data, if the task supplies it (only exists if `input_data:` is set).                        |
+|
 
 Scoring program common-case Python boilerplate (paths confirmed by
 `Detailed-Results-and-Visualizations.md`):
@@ -388,6 +388,8 @@ prediction_dir = os.path.join(input_dir, 'res')# predictions
 score_file = os.path.join(output_dir, 'scores.json')
 html_file  = os.path.join(output_dir, 'detailed_results.html')  # optional
 ```
+
+*NOTE:* use two sets of paths when creating scoring program, set 1 to be used by Codabench, set 2 to be used locally for testing the scripts. To check a scoring template example, see `auto_codabench/examples/scoring.py`
 
 ### Outputs the scoring program must write
 
@@ -425,8 +427,9 @@ The positional args by convention:
 3. `/app/program/` — its own scripts directory
 4. `/app/ingested_program/` — the participant's unpacked submission
 
-Passing these as args is **optional** but conventional; the script can
-also just hardcode them.
+Passing these as args is **optional** but conventional; the script can also just hardcode them.
+
+*NOTE:* use two sets of paths when creating ingestion program, set 1 to be used by Codabench, set 2 to be used locally for testing the scripts. To check an ingestion template example, see `auto_codabench/examples/ingestion.py`
 
 ### Filesystem the ingestion step sees
 
