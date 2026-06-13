@@ -5,7 +5,7 @@ Entry points are tiered by their authentication demands, keyless first:
   autocodabench validate-bundle BUNDLE [--facts F] [--judged]  # keyless (unless --judged)
   autocodabench demo [--out DIR]                               # keyless replay demo
   autocodabench create "IDEA" [--data PATH]                    # agentic; subscription or API key
-  autocodabench auth status [--probe]
+  autocodabench auth status [--no-probe]   # report, pick, and verify via a live turn
   autocodabench checks list
 
 ``validate-bundle`` validates any bundle — including hand-written ones that
@@ -34,6 +34,8 @@ def _require_live_claude_auth(backend_spec: str | None) -> bool:
     mid-run. Non-Claude backends (ollama:/openai:/URL) carry their own
     credentials and are skipped."""
     if backend_spec and backend_spec.split(":", 1)[0] != "claude":
+        print(f"INFO: backend = {backend_spec} (non-Claude; uses its own "
+              "credentials / runs locally)", file=sys.stderr)
         return True
     from ..auth import AuthRequiredError, ensure_live_auth
     try:
@@ -163,21 +165,94 @@ def _cmd_create(args: argparse.Namespace) -> int:
 # auth
 # ---------------------------------------------------------------------------
 
-def _cmd_auth(args: argparse.Namespace) -> int:
-    from ..auth import probe, resolve_auth
+def _probe_active_auth(model: str | None) -> int:
+    """Realize the current auth preference and actually authenticate the agent
+    SDK with it — a one-turn live session — so the report reflects whether
+    auth *works*, not merely whether a credential file exists on disk.
+    Returns a process exit code (0 = authenticated, 1 = no auth / failed)."""
+    from ..auth import apply_auth_preference, probe
 
+    status = apply_auth_preference()  # honor the preference before probing
+    if status.effective == "none":
+        print("\nNo Claude auth is configured, so there is nothing to verify. "
+              "Set one with `autocodabench auth use <subscription|api_key>`.",
+              file=sys.stderr)
+        return 1
+    print(f"\n{status.info_line()}")
+    print(f"Verifying the agent SDK can authenticate via {status.effective} "
+          "(one minimal live turn)…")
+    outcome = asyncio.run(probe(model=model))
+    if outcome["ok"]:
+        print(f"✓ authenticated — the agent SDK signed in via {status.effective} "
+              "and replied. Setup works.")
+        return 0
+    print(f"✗ authentication FAILED via {status.effective}: "
+          f"{outcome.get('error') or outcome.get('status')}", file=sys.stderr)
+    print("  The credential was detected but the agent SDK could not "
+          "authenticate with it. For a subscription, re-run `claude` then "
+          "`/login`; for a key, confirm it is valid and unexpired.",
+          file=sys.stderr)
+    return 1
+
+
+def _cmd_auth(args: argparse.Namespace) -> int:
+    from ..auth import (
+        AUTH_MODES,
+        choose_auth_interactively,
+        describe_codabench_credentials,
+        resolve_auth,
+        set_auth_preference,
+    )
+
+    # `autocodabench auth use <mode>` — set the preference, then verify it.
+    if args.action == "use":
+        mode = (args.mode or "").strip().lower()
+        if mode not in AUTH_MODES:
+            print(f"mode must be one of {', '.join(AUTH_MODES)}", file=sys.stderr)
+            return 2
+        path = set_auth_preference(mode)
+        status = resolve_auth()
+        # Fill the gap the chosen mode needs (tty only): paste a key, or launch
+        # Claude Code's sign-in so the subscription is set up in place.
+        if mode == "api_key" and not status.api_key_set and sys.stdin.isatty():
+            from ..auth import _prompt_and_store_api_key
+            _prompt_and_store_api_key()
+            status = resolve_auth()
+        elif (mode == "subscription" and not status.subscription_login_detected
+              and sys.stdin.isatty()):
+            from ..auth import launch_claude_login
+            launch_claude_login()
+            status = resolve_auth()
+        print(f"auth preference set to '{mode}' ({path})")
+        print(status.describe())
+        # Always try to authenticate with the requested preference — the point
+        # of choosing it is to confirm it actually works.
+        if not args.no_probe:
+            return _probe_active_auth(args.model)
+        return 0
+
+    # `autocodabench auth status`
     status = resolve_auth()
     print(status.describe())
-    if args.probe:
-        print("\nProbing with a one-turn session…")
-        outcome = asyncio.run(probe(model=args.model))
-        if outcome["ok"]:
-            cost = outcome.get("cost_usd")
-            print(f"probe OK (cost: ${cost:.4f})" if cost is not None else "probe OK")
-        else:
-            print(f"probe FAILED: {outcome.get('error') or outcome.get('status')}",
-                  file=sys.stderr)
-            return 1
+    print()
+    print(describe_codabench_credentials())
+
+    # Interactive picker so the user can switch without editing files.
+    if not args.no_pick and sys.stdin.isatty():
+        try:
+            changed = choose_auth_interactively(status)
+        except (KeyboardInterrupt, EOFError):
+            changed = None
+            print(file=sys.stderr)
+        if changed is not None:
+            print()
+            print(changed.describe())
+            status = changed
+
+    # By default, verify the resolved preference end to end rather than just
+    # reporting on-disk detection. `--no-probe` keeps it static (offline/CI).
+    if not args.no_probe:
+        return _probe_active_auth(args.model)
     return 0
 
 
@@ -241,11 +316,20 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--verbose", action="store_true", help="stream agent text")
     p.set_defaults(func=_cmd_create)
 
-    p = sub.add_parser("auth", help="report which Claude auth path is active")
-    p.add_argument("action", choices=["status"], nargs="?", default="status")
+    p = sub.add_parser("auth", help="report, choose, and verify which Claude auth path is used")
+    p.add_argument("action", choices=["status", "use"], nargs="?", default="status",
+                   help="'status' reports, lets you pick (on a terminal), and "
+                        "verifies; 'use <mode>' sets the preference and verifies it")
+    p.add_argument("mode", nargs="?", default=None,
+                   help="for 'use': auto | subscription | api_key")
+    p.add_argument("--no-probe", action="store_true",
+                   help="skip the live verification turn; static detection only "
+                        "(use offline or in CI)")
     p.add_argument("--probe", action="store_true",
-                   help="spend one tiny turn to confirm auth end to end")
-    p.add_argument("--model", help="model for the probe turn")
+                   help="(now the default) verify auth end to end with one live turn")
+    p.add_argument("--no-pick", action="store_true",
+                   help="status: just report, skip the interactive picker")
+    p.add_argument("--model", help="model for the verification turn")
     p.set_defaults(func=_cmd_auth)
 
     p = sub.add_parser("checks", help="list the registered checks by tier")

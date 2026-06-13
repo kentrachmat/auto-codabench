@@ -1,11 +1,14 @@
 """Live backend on the Claude Agent SDK.
 
-Credential resolution is deliberately *not* re-implemented here: the SDK's
-bundled Claude Code runtime owns it, with its own precedence (an exported
-``ANTHROPIC_API_KEY`` takes priority over a stored subscription login).
-:mod:`autocodabench.auth` provides the user-facing status report and the
-pre-session preflight that surface that shadowing hazard before any
-tokens are spent.
+Credential resolution is owned by the SDK's bundled Claude Code runtime,
+with its own precedence (an exported ``ANTHROPIC_API_KEY`` takes priority
+over a stored subscription login). Rather than fight that, the backend
+calls :func:`autocodabench.auth.apply_auth_preference` before the SDK
+reads the environment: when the user's stored preference is
+``subscription``, any ``ANTHROPIC_API_KEY`` is removed for the process so
+the subscription login is the one used — no manual unsetting.
+:mod:`autocodabench.auth` also provides the status report and the
+pre-session ``INFO`` banner.
 
 The backend records every SDK message to a JSONL trace when
 ``task.trace_path`` is set — those traces, together with the MCP layer's
@@ -54,6 +57,13 @@ class ClaudeAgentBackend:
         self.permission_mode = permission_mode
 
     async def run(self, task: AgentTask) -> AgentRunResult:
+        # Realize the user's auth preference (e.g. hide ANTHROPIC_API_KEY when
+        # they chose the subscription) before the SDK reads the environment.
+        # The CLI also does this at preflight; doing it here covers library
+        # and web callers. Idempotent and quiet (the banner is the CLI's job).
+        from ..auth import apply_auth_preference
+        apply_auth_preference()
+
         # Lazy import: keyless environments (validator-only, CI replay)
         # never touch the SDK or its bundled CLI runtime.
         from claude_agent_sdk import (

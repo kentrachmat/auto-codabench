@@ -158,7 +158,7 @@ The design consequence is stated as an invariant in `architecture.md` and is wor
 
 The payoff is scientific rather than merely practical: because the backbone is a slot, it is an experimental variable, and `experiments/backbone_bench/` measures backbones against each other on a fixed protocol — including a deterministic no-LLM baseline that the judged tier must beat to justify its existence. A hard-wired SDK admits no such experiment.
 
-Authentication lives beside the seam (`auth.py`) for one Claude-specific reason that costs users real money when misunderstood: the SDK gives an exported `ANTHROPIC_API_KEY` precedence over a stored subscription login, silently. `autocodabench auth status` reports which path is active and warns on shadowing; live commands run an interactive preflight before starting a session rather than failing opaquely mid-run.
+Authentication lives beside the seam (`auth.py`) for one Claude-specific reason that costs users real money when misunderstood: the SDK gives an exported `ANTHROPIC_API_KEY` precedence over a stored subscription login, silently. Rather than make the user delete a key to use their plan, autocodabench stores an explicit preference (`auto`/`subscription`/`api_key`) and realizes it — choosing `subscription` hides the key from the SDK for the process, so no manual unsetting is required. `autocodabench auth status` reports and lets the user pick the path; every live command prints an `INFO:` banner naming the auth in use and runs an interactive preflight rather than failing opaquely mid-run.
 
 ---
 

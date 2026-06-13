@@ -20,7 +20,8 @@ autocodabench validate-bundle <bundle-dir-or-zip> [--facts facts.yaml]
 autocodabench checks list                 # registered checks by tier, with citations
 
 # Auth-requiring paths (subscription login preferred; ANTHROPIC_API_KEY second):
-autocodabench auth status [--probe]       # which auth path is active + foot-gun warnings
+autocodabench auth status [--no-probe]    # active path + masked creds; verifies the SDK can sign in (live turn) unless --no-probe
+autocodabench auth use <auto|subscription|api_key>   # choose; subscription hides any key from the SDK
 autocodabench validate-bundle <bundle> --judged      # adds LLM-judged advisory checks
 autocodabench create "<idea>" [--data D]  # agentic plan→build pipeline
 
@@ -42,7 +43,7 @@ cd web && chainlit run app.py --host 127.0.0.1 --port 8500 -h   # web UI (needs 
 - `backends/` — the AgentBackend seam. `claude.py` (live, Claude Agent SDK; lazy import) and `replay.py` (re-executes a recorded run's `tool_calls/` against the real core — keyless, deterministic; powers `demo` and CI). Everything above the seam talks only to `backends.base.AgentTask/AgentRunResult`.
 - `agent/` — the plan→build pipeline: two isolated SDK sessions joined only by the locked `specs/implementation_plan.md`. Prompts come from the packaged skills (`skills/*/SKILL.md`, frontmatter stripped + per-surface runtime footer). Per-phase tool allowlists are the capability contract.
 - `mcp/` — FastMCP stdio server exposing 20 tools over core+runner (`instance.py` holds the shared FastMCP object; `tools/` are thin logged wrappers). It is *one interface*, spawned as a subprocess by both the agent pipeline and the web UI.
-- `auth.py` — subscription-vs-API-key status. Key invariant to preserve in docs and code: the SDK gives `ANTHROPIC_API_KEY` precedence over a subscription login; multi-user deployments MUST use an API key (Anthropic ToS), local dev should prefer subscription.
+- `auth.py` — subscription-vs-API-key status, plus a persisted **auth preference** (`auto|subscription|api_key`, in `~/.config/autocodabench/auth.json`, env override `AUTOCODABENCH_AUTH`). The SDK gives `ANTHROPIC_API_KEY` precedence over a subscription login; rather than make users unset the key, `apply_auth_preference()` hides it from the process when the preference is `subscription`. Every live command prints an `INFO:` auth banner. Invariant: multi-user deployments MUST use an API key (Anthropic ToS); local dev should prefer subscription.
 - `run_log.py` — every MCP tool call is snapshotted to `<run>/tool_calls/NNNN_*.json` + `events.jsonl` via the `logged_tool` decorator. This audit trail is also the replay-fixture format — don't break that duality.
 
 ### Path resolution

@@ -33,24 +33,53 @@ Two authentication paths are supported, listed in recommended order.
 
 | Path | Intended use | Setup |
 |---|---|---|
-| **Claude subscription** (Pro or Max) | Local use; the recommended path for individual users | Install Claude Code, run `claude`, and enter `/login`. Subsequent autocodabench agent sessions draw from the plan's monthly Agent SDK credit. |
+| **Claude subscription** (Pro or Max) | Local use; the recommended path for individual users | Install Claude Code; then run `autocodabench auth use subscription` — if no login is found it asks for consent and opens Claude Code's sign-in for you (equivalent to `claude auth login`). Subsequent autocodabench agent sessions draw from the plan's monthly Agent SDK credit. |
 | **`ANTHROPIC_API_KEY`** | Automation in CI-adjacent environments, users without a subscription, and any hosted multi-user deployment, for which it is required | `export ANTHROPIC_API_KEY=sk-ant-…`, or place the key in a `.env` file (see below). |
 
-To determine which path is active:
+To inspect or choose the active path:
 
 ```bash
-autocodabench auth status            # detection and warnings
-autocodabench auth status --probe    # spends one minimal turn to confirm end-to-end
+autocodabench auth status            # report, pick, and verify (one live turn)
+autocodabench auth status --no-probe # report only; no live turn (offline / CI)
+autocodabench auth use subscription  # prefer the subscription, even if a key is set
+autocodabench auth use api_key       # prefer the key (and paste one if none is set)
+autocodabench auth use auto          # default: the key if present, else the subscription
 ```
 
-Two rules are important to observe:
+Both `auth status` and `auth use <mode>` do more than report: by default they
+**realize the preference and authenticate the agent SDK with it** — one
+minimal live turn — and report whether the sign-in actually succeeded. Static
+detection only confirms that a credential file or variable is present on disk;
+the probe confirms the credential is accepted. Pass `--no-probe` to skip the
+live turn (for offline or CI use).
 
-1. **An exported `ANTHROPIC_API_KEY` takes precedence over a stored
-   subscription login.** This is the SDK's precedence order, and it applies
-   silently. `auth status` issues a warning when a subscription login is
-   being shadowed in this way; to bill against the subscription plan,
-   unset the variable entirely rather than setting it to an empty string.
-2. **Hosted multi-user deployments must use an API key.** Under
+### Choosing between a key and a subscription
+
+The Claude Agent SDK prefers an exported `ANTHROPIC_API_KEY` over a stored
+subscription login. Rather than require you to delete a key to fall back to
+your plan, autocodabench stores an explicit **preference** and realizes it
+for you: choosing `subscription` hides any `ANTHROPIC_API_KEY` from the SDK
+for the run, so the subscription login is the one used — nothing to unset.
+The preference persists at `~/.config/autocodabench/auth.json` (override
+per-invocation with `AUTOCODABENCH_AUTH=auto|subscription|api_key`), and is
+set with `autocodabench auth use <mode>` or the picker that `auth status`
+shows on a terminal. The default, `auto`, uses a key when one is present
+and the subscription otherwise.
+
+Every command that starts a live model session prints a one-line `INFO:`
+banner naming the auth in use (API key, subscription, or none) before any
+tokens are spent.
+
+`autocodabench auth status` also reports a masked preview of each configured
+credential, so you can confirm *which* value is set without revealing it. The
+`ANTHROPIC_API_KEY` shows its scheme prefix and last four characters; the
+Codabench publishing credentials (section 7) are listed in a second block,
+with the password and token masked and the username shown in full. A
+credential that is absent reads `(not set)`, distinct from `(set but empty)`.
+
+One rule still binds:
+
+1. **Hosted multi-user deployments must use an API key.** Under
    Anthropic's terms of service, requests from other users may not be
    routed through one person's Free, Pro, or Max credentials. Running the
    web UI locally for personal use on a personal subscription is
@@ -60,18 +89,20 @@ Two rules are important to observe:
 ### `.env` loading and the authentication preflight
 
 The CLI loads `<cwd>/.env` at startup using a minimal parser that never
-overrides variables already present in the real environment. Consequently,
-`ANTHROPIC_API_KEY` may be placed in a `.env` file in the working
-directory instead of being exported.
+overrides variables already present in the real environment, so
+`ANTHROPIC_API_KEY` may live in a `.env` file instead of being exported.
+You do not have to edit that file by hand: `autocodabench auth use api_key`
+(and the `auth status` picker) prompt for a key with hidden input and offer
+to save it to `./.env` (file mode 600) for you.
 
 The commands `autocodabench create` and `autocodabench validate-bundle --judged`
 perform an authentication preflight before starting a session. When no
 credentials are found and the command is running on an interactive
-terminal, the preflight offers two options: completing a subscription
-login (run `claude`, then `/login`), or entering an API key via hidden
-input, with an optional save to `./.env` (written with file mode 600). In
-non-interactive contexts, these commands exit with status 2 and print
-guidance instead.
+terminal, the preflight offers the same two options — signing in to the
+subscription (after asking for consent, it opens Claude Code's sign-in in
+place; you may decline and run `claude auth login` yourself), or entering an
+API key. In non-interactive contexts, these commands exit with status 2 and
+print guidance instead.
 
 Keyless commands (`validate-bundle`, `demo`, `checks list`) do not consult
 authentication state at all.
@@ -259,7 +290,7 @@ poll) is documented in
 
 | Symptom | Likely cause and resolution |
 |---|---|
-| `create` or `--judged` fails to start a session | Run `autocodabench auth status --probe`. If no authentication is configured, log in through Claude Code or export `ANTHROPIC_API_KEY` (or place it in `./.env`); on an interactive terminal, the preflight described in section 2 offers these options directly. |
+| `create` or `--judged` fails to start a session | Run `autocodabench auth status` — it verifies the agent SDK can actually sign in and reports the failure if it cannot. If no authentication is configured, log in through Claude Code or export `ANTHROPIC_API_KEY` (or place it in `./.env`); on an interactive terminal, the preflight described in section 2 offers these options directly. |
 | Usage is billed to the API instead of the subscription plan | A stale `ANTHROPIC_API_KEY` is exported; `auth status` warns about precisely this condition. Unset the variable. |
 | Bundle validates locally but is rejected by Codabench | Confirm that the uploaded archive is the zip produced by `zip_bundle` or by the pipeline — `competition.yaml` must reside at the zip root, not inside a subdirectory. |
 | Checks report `skipped … requires facts` | Add the named keys to `competition_facts.yaml` (section 3). |

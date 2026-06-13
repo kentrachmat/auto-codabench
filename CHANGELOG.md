@@ -7,6 +7,15 @@ All notable changes to autocodabench. Format follows
 ## [Unreleased]
 
 ### Changed
+- **`auth status` and `auth use` now verify by default.** Both realize the
+  resolved auth preference and authenticate the agent SDK with it — one
+  minimal live turn — rather than reporting only on-disk credential
+  detection, which cannot prove a login is accepted. The verification is on
+  by default (it was previously opt-in via `--probe`); pass `--no-probe` for
+  static detection only (offline / CI). `--probe` is still accepted as a
+  no-op. The Codabench section is relabeled to make clear those credentials
+  are the codabench.org account login used only for publishing — never Claude
+  or agent-SDK auth (Claude auth has no username/password concept).
 - The standalone `codabench-validate` console script is removed; bundle
   validation is now the `autocodabench validate-bundle` subcommand (with
   `validate` kept as a back-compatible alias). One console script,
@@ -26,6 +35,35 @@ All notable changes to autocodabench. Format follows
   regression-tested.
 
 ### Added
+- **In-place Claude sign-in.** When the subscription path is chosen but no
+  login is found (the `auth status` picker, `auth use subscription`, or the
+  `create` / `--judged` preflight), autocodabench now asks for consent and,
+  on agreement, launches Claude Code's own sign-in (`claude auth login
+  --claudeai`) as a child process — no second terminal, no manual `/login`.
+  Consent is always requested first ("We did not find your Claude
+  credentials… sign in now?"); declining is a first-class outcome and the
+  user can quit and run `claude auth login` themselves. Public helper
+  `launch_claude_login()` in `autocodabench.auth`; autocodabench delegates the
+  OAuth flow to the official CLI and never handles subscription tokens itself.
+- **Masked credential inspection** in `autocodabench auth status`: the
+  report now shows a non-recoverable preview of each configured secret
+  rather than a bare boolean — `ANTHROPIC_API_KEY` as its scheme prefix
+  plus last four characters and length, and a second block for the
+  Codabench publishing credentials (`CODABENCH_USERNAME` in full,
+  `CODABENCH_PASSWORD` and `CODABENCH_TOKEN` masked). Absent, set-but-empty,
+  and present values are distinguishable. Public helpers `mask_secret`,
+  `codabench_credentials_status`, and `describe_codabench_credentials` in
+  `autocodabench.auth`.
+- **Auth preference (choose without unsetting)**: a persisted
+  `auto|subscription|api_key` preference (`~/.config/autocodabench/auth.json`,
+  env override `AUTOCODABENCH_AUTH`). The Claude SDK prefers
+  `ANTHROPIC_API_KEY` over a subscription login; instead of requiring users
+  to delete the key, `auth use subscription` (or the picker in `auth status`)
+  hides the key from the SDK for the run so the subscription is used.
+  `autocodabench auth use <mode>` sets it non-interactively and can paste a
+  key (hidden input, optional save to `./.env`) without editing files. Every
+  command that starts a live model session prints an `INFO:` banner naming
+  the auth in use (API key / subscription / none).
 - **Docker execution engine** (platform-faithful runs):
   `run_baseline_submission` / `run_user_submission` (library + MCP tools)
   accept `engine: auto|docker|conda`. The docker engine — selected by
