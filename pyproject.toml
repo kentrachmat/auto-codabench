@@ -4,12 +4,24 @@ build-backend = "hatchling.build"
 
 [project]
 name = "autocodabench"
-version = "0.1.0"
-description = "MCP server for authoring Codabench competition bundles entirely offline."
-readme = "auto_codabench/README.md"
+version = "0.2.0.dev0"
+description = "Agentic authoring and pre-launch validation of Codabench competition bundles."
+readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Khuong T.G. Hieu" }]
 license = "MIT"
+keywords = ["codabench", "competition", "benchmark", "agent", "mcp", "validation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     # 2.14.7 specifically — looser constraints like `>=2.0.0,<3.0.0` let
     # pip's solver pick a buggy 2.x release on HF where the OAuth-proxy
@@ -17,13 +29,28 @@ dependencies = [
     "fastmcp==2.14.7",
     "PyYAML>=6.0",
     "python-dotenv>=1.0.0",
+    # The agentic layer. Imported lazily — the deterministic validator and
+    # replay demo work even where the bundled Claude Code runtime can't run.
+    "claude-agent-sdk>=0.2.80",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.3.1", "pytest-asyncio>=0.21.0"]
+dev = [
+    "pytest>=7.3.1",
+    "pytest-asyncio>=0.21.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ktgiahieu/auto-codabench"
+Issues = "https://github.com/ktgiahieu/auto-codabench/issues"
 
 [project.scripts]
-autocodabench-mcp-server = "auto_codabench.mcp_server.server:main"
+autocodabench = "autocodabench.cli.main:main"
+autocodabench-mcp-server = "autocodabench.mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["auto_codabench"]
+packages = ["src/autocodabench"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,65 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "validate: ground-truth bundle (keyless)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "autocodabench.cli.main",
+      "args": [
+        "validate-bundle",
+        "${workspaceFolder}/experiments/bundle_creation_test/competitions/style-trans-fair/ground_truth/bundle"
+      ],
+      "python": "/Users/ktgiahieu/miniconda3/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "validate: generated bundle (keyless)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "autocodabench.cli.main",
+      "args": [
+        "validate-bundle",
+        "${workspaceFolder}/experiments/bundle_creation_test/runs/style-trans-fair/102b9a8b_20260612_002233/bundles/style-trans-fair"
+      ],
+      "python": "/Users/ktgiahieu/miniconda3/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "validate: --judged (needs Claude auth)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "autocodabench.cli.main",
+      "args": [
+        "validate-bundle",
+        "${workspaceFolder}/experiments/bundle_creation_test/competitions/style-trans-fair/ground_truth/bundle",
+        "--judged"
+      ],
+      "python": "/Users/ktgiahieu/miniconda3/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "demo: replay -> bundle_io -> checks (keyless)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "autocodabench.cli.main",
+      "args": ["demo", "--out", "${workspaceFolder}/.autocodabench/debug-demo"],
+      "python": "/Users/ktgiahieu/miniconda3/bin/python",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "debug current file (scratch scripts)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "python": "/Users/ktgiahieu/miniconda3/bin/python",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    }
+  ]
+}

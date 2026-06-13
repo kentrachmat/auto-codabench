@@ -43,7 +43,7 @@
       <div class="ac-help-title">What this chip is</div>
       <p>One MCP call the agent made — input JSON above, output below.
       The full audit trail (raw JSON of every call, plus stdout) lives on
-      disk under <code>auto_codabench/runs/&lt;your session&gt;/</code>.</p>
+      disk under <code>.autocodabench/runs/&lt;your session&gt;/</code>.</p>
       <p><b>autocodabench</b> tools write competition-bundle files and
       structured run-events. <b>alex-mcp</b> tools look up papers in
       OpenAlex / PubMed / ORCID.</p>

@@ -8,7 +8,7 @@ Architecture (per chat session):
   1. Visitor enters SHARED_PASSWORD (Chainlit password_auth_callback).
   2. on_chat_start:
       - Mint a session UUID; mkdir an isolated run dir under
-        auto_codabench/runs/web_<uuid>/.
+        <runs_root>/web_<uuid>/.
       - Spawn a ClaudeSDKClient with:
           * model from AUTOCODABENCH_DEFAULT_MODEL
           * system_prompt = the orchestrator SKILL.md (full text)
@@ -133,6 +133,9 @@ sys.path.insert(0, str(REPO_ROOT))
 # variables come from Repository Secrets and load_dotenv is a no-op.
 load_dotenv(REPO_ROOT / ".env")
 
+# Keep run/bundle artifacts at the repo root regardless of the chainlit cwd.
+os.environ.setdefault("AUTOCODABENCH_HOME", str(REPO_ROOT / ".autocodabench"))
+
 
 # ---------------------------------------------------------------------------
 # Config
@@ -225,7 +228,8 @@ _KIT_TOOLS            = _BUNDLE_TOOLS  # alias for any stragglers
 HF_RUNS_REPO = os.environ.get("AUTOCODABENCH_RUNS_REPO", "ktgiahieu/autocodabench-runs")
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
-SKILLS_ROOT = REPO_ROOT / "auto_codabench" / "skills"
+from autocodabench.agent.prompts import skills_dir as _acb_skills_dir
+SKILLS_ROOT = _acb_skills_dir()
 
 
 def _resolve_skill(*candidates: str) -> Path:
@@ -246,7 +250,9 @@ _SKILL_BY_PHASE = {
     PHASE_BUNDLE: IMPLEMENT_SKILL,
 }
 
-RUNS_ROOT = REPO_ROOT / "auto_codabench" / "runs"
+from autocodabench.core.config import bundles_root as _acb_bundles_root
+from autocodabench.core.config import runs_root as _acb_runs_root
+RUNS_ROOT = _acb_runs_root()
 
 
 def _read_skill(path: Path) -> str:
@@ -331,7 +337,7 @@ def _probe_mcp_imports() -> list[str]:
         "print('oauth_proxy as pkg:', (p / 'server/auth/oauth_proxy/__init__.py').is_file())"
     )
     probes = {
-        "autocodabench": "import auto_codabench.mcp_server.server",
+        "autocodabench": "import autocodabench.mcp.server",
         "alex-mcp": "import alex_mcp.server",
     }
     failures: list[str] = []
@@ -376,7 +382,7 @@ def _mcp_servers(run_dir: Path) -> dict:
         "autocodabench": {
             "type": "stdio",
             "command": PYTHON_BIN,
-            "args": ["-m", "auto_codabench.mcp_server.server"],
+            "args": ["-m", "autocodabench.mcp.server"],
             "env": env_for_mcp,
         },
         "alex-mcp": {
@@ -498,7 +504,7 @@ def _register_upload_route() -> None:
                  sid, username, bundle_zip, bundle_zip.stat().st_size)
 
         try:
-            from auto_codabench.mcp_server.tools.upload import upload_zip
+            from autocodabench.upload import upload_zip
             result = await asyncio.to_thread(
                 upload_zip,
                 bundle_zip,
@@ -1052,7 +1058,7 @@ def _delete_phase_artifact(run_dir: Path, phase: str) -> None:
         if phase == PHASE_BUNDLE:
             # Bundles now live under <run>/bundles/<slug>/. Wipe ONLY
             # this session's bundles dir — never touch the global
-            # auto_codabench/bundles/ tree, which could belong to a
+            # global bundles tree, which could belong to a
             # different concurrent session.
             session_bundles = run_dir / "bundles"
             if session_bundles.is_dir():
@@ -1586,7 +1592,7 @@ def _find_bundle_zip(run_dir: Path) -> Path | None:
     Resolution order:
       1. `<run>/bundles/*/*.zip`  — the canonical per-session location
          set by `resolve_bundle_dir` when AUTOCODABENCH_RUN_DIR is in env.
-      2. `auto_codabench/bundles/*/*.zip` filtered to bundles whose mtime
+      2. `<bundles_root>/*/*.zip` filtered to bundles whose mtime
          is later than the session's start time — defensive fallback for
          the case where the MCP subprocess somehow lost AUTOCODABENCH_RUN_DIR
          and wrote to the global default. We pick the most-recent within
@@ -1610,7 +1616,7 @@ def _find_bundle_zip(run_dir: Path) -> Path | None:
     if not meta.is_file():
         return None
     session_start = meta.stat().st_mtime
-    global_root = REPO_ROOT / "auto_codabench" / "bundles"
+    global_root = _acb_bundles_root()
     if not global_root.is_dir():
         return None
     fresh = [p for p in global_root.glob("*/*.zip")
@@ -1668,7 +1674,7 @@ def _write_public_artifacts(run_dir: Path, session_id: str) -> None:
       - plan.html       — markdown render of specs/implementation_plan.md.
       - transcript.html — markdown render of transcript.md.
       - cost.html       — monospace dump of cost.jsonl.
-      - bundle.zip      — copy of auto_codabench/bundles/<slug>/<slug>.zip
+      - bundle.zip      — copy of <bundles_root>/<slug>/<slug>.zip
                           once Phase 2 has produced one.
       - manifest.json   — list of these files with public URLs + tags.
     """
@@ -1910,7 +1916,7 @@ def _phase_artifact_exists(run_dir: Path, phase: str) -> bool:
 
     PLAN   → specs/implementation_plan.md (or implementation_plan.md as
              a legacy fallback).
-    BUNDLE → any *.zip under auto_codabench/bundles/.
+    BUNDLE → any *.zip under the bundles root.
     """
     if phase == PHASE_PLAN:
         return ((run_dir / "specs" / "implementation_plan.md").is_file()

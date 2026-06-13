@@ -1,0 +1,121 @@
+{
+  "generated_at": "2026-06-12T00:53:47+00:00",
+  "backend": "claude",
+  "model_override": null,
+  "runs_per_judged_condition": 3,
+  "defects": [
+    {
+      "defect": "missing-page",
+      "tier": "deterministic",
+      "expect_check": "bundle-schema",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "a page referenced from competition.yaml is deleted"
+    },
+    {
+      "defect": "unwritten-leaderboard-key",
+      "tier": "deterministic",
+      "expect_check": "bundle-schema",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "scoring program stops writing a leaderboard column key"
+    },
+    {
+      "defect": "no-daily-cap",
+      "tier": "deterministic",
+      "expect_check": "daily-submission-cap",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "development phase loses its per-day submission cap"
+    },
+    {
+      "defect": "short-dev-phase",
+      "tier": "deterministic",
+      "expect_check": "dev-phase-duration",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "development phase shrunk to 10 days"
+    },
+    {
+      "defect": "no-sorting",
+      "tier": "deterministic",
+      "expect_check": "leaderboard-sorting",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "primary leaderboard column loses its sorting direction"
+    },
+    {
+      "defect": "final-unlimited",
+      "tier": "deterministic",
+      "expect_check": "final-phase-submission-limit",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "final phase allows 50 total submissions"
+    },
+    {
+      "defect": "kit-missing",
+      "tier": "deterministic",
+      "expect_check": "starting-kit",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "starting kit removed"
+    },
+    {
+      "defect": "single-phase",
+      "tier": "deterministic",
+      "expect_check": "two-phase-structure",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "final phase dropped (single-phase competition)"
+    },
+    {
+      "defect": "docker-unpinned",
+      "tier": "deterministic",
+      "expect_check": "docker-image-pinned",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "docker image no longer pinned"
+    },
+    {
+      "defect": "caps-contradiction",
+      "tier": "judged",
+      "expect_check": "judged-docs-config-consistency",
+      "runs": 3,
+      "caught": 3,
+      "catch_rate": 1.0,
+      "description": "overview page promises 20 submissions/day; config enforces 5"
+    },
+    {
+      "defect": "metric-direction-contradiction",
+      "tier": "judged",
+      "expect_check": "judged-docs-config-consistency",
+      "runs": 3,
+      "caught": 3,
+      "catch_rate": 1.0,
+      "description": "evaluation page claims lower-is-better; leaderboard sorts descending"
+    },
+    {
+      "defect": "phase-dates-contradiction",
+      "tier": "judged",
+      "expect_check": "judged-docs-config-consistency",
+      "runs": 3,
+      "caught": 3,
+      "catch_rate": 1.0,
+      "description": "overview page states 2027 phase dates; config says 2026"
+    }
+  ],
+  "judged_false_positive": {
+    "runs": 3,
+    "false_positives": 0,
+    "fp_rate": 0.0
+  }
+}

@@ -10,75 +10,105 @@ license: mit
 short_description: Chat assistant for designing Codabench competitions.
 ---
 
-# AutoCodabench
+# autocodabench
 
-A scientific-friend chat assistant that takes a one-line competition
-idea and walks you through two phases to a ready-to-upload Codabench
-`.zip`:
+autocodabench is a library for agentic authoring and pre-launch validation of
+[Codabench](https://www.codabench.org) competition bundles.
 
-1. **📝 Plan** — short, citation-grounded design conversation. Saves
-   `implementation_plan.md` covering task / data / metric / baseline /
-   rules / ethics / schedule.
-2. **📦 Competition Creation** — a fresh agent reads the locked plan
-   and packages `competition.yaml`, scoring program, baseline, pages,
-   into a Codabench-shaped `.zip`. One-click upload to Codabench
-   returns the live competition URL.
+Organizing a machine-learning competition on Codabench requires hand-writing
+an interlocking set of YAML configurations, scoring programs, and data
+splits; a single inconsistency ships silently and fails on live
+participants. autocodabench addresses this problem in two ways. First, it
+turns a one-line idea (or a proposal PDF) into a validated, uploadable
+bundle. Second, it tests bundles — whether generated or hand-written — the
+way software is tested: against an executable checklist before launch.
 
-> **This `README.md` is also the Hugging Face Spaces metadata file** —
-> the YAML header above configures the Space (Docker SDK, port 7860).
-> Don't delete it on the HF side; edit prose freely below.
+> **Note:** this `README.md` also serves as the Hugging Face Spaces metadata
+> file. The YAML header above configures the Space (Docker SDK, port 7860).
+> It must not be deleted on the HF side; the prose below it may be edited
+> freely.
 
-## Where to look
+## Quickstart (no API keys required)
 
-| You are… | Read |
-|----------|------|
-| Trying the Web UI (Space or `chainlit run`) | [`auto_codabench/INSTRUCTION_FOR_USER.md`](auto_codabench/INSTRUCTION_FOR_USER.md) §A |
-| Wiring the CLI (Claude Desktop / Claude Code) | [`auto_codabench/INSTRUCTION_FOR_USER.md`](auto_codabench/INSTRUCTION_FOR_USER.md) §B |
-| Deploying the HF Space (operator) | [`web/README.md`](web/README.md) |
-| Hacking the package internals | [`auto_codabench/README.md`](auto_codabench/README.md) |
-| **System diagrams** (architecture + Phase 1→2 sequence) | [`auto_codabench/README.md` § System diagrams](auto_codabench/README.md#system-diagrams) |
-| **Skill provenance** (where each `SKILL.md` came from, why) | [`auto_codabench/skills/<name>/README.md`](auto_codabench/skills/) — one per skill |
-| Test harness around the package | [`experiments/bundle_creation_test/README.md`](experiments/bundle_creation_test/README.md) |
+The following commands exercise the full pipeline without any LLM
+credentials.
 
-## What's where
+```bash
+pip install -e .            # (PyPI release pending — install from a checkout)
 
-| Path | What it is |
-|------|------------|
-| `web/` | Chainlit app — the chat UI deployed by this Space. |
-| `auto_codabench/` | The autocodabench MCP server + skill files + bundle output. |
-| `documentation/codabench_bundle_upload/` | Reference Codabench REST-API upload helper (the `upload_zip` function in `auto_codabench/mcp_server/tools/upload.py` imports from here). |
+# Watch the full pipeline offline: a recorded agent run is replayed against
+# the real authoring layer, then validated and zipped.
+autocodabench demo --out ./demo
+
+# Validate any bundle — including one written by hand.
+autocodabench validate-bundle ./demo/demo-ai-text-detection.zip
+
+# List what is checked, by tier, with citations.
+autocodabench checks list
+```
+
+The validator's checks are organized into three tiers with different
+epistemic standing: **deterministic** checks gate (code computes pass or
+fail), **LLM-judged** checks advise (findings with rationale, never gates),
+and **attestations** surface launch criteria that only a human can certify.
+Checks that need context the bundle cannot carry (for example, the
+anticipated error rate or the unit of generalization) read a declared
+`competition_facts.yaml`; when such facts are absent, the check reports
+that it was skipped, together with instructions for enabling it, rather
+than silently passing.
+
+## Agentic authoring (bring an LLM backbone)
+
+The authoring pipeline requires an LLM backend and is invoked as follows.
+
+```bash
+autocodabench auth status     # which Claude auth path is active, if any
+autocodabench create "Plankton image classification, balanced accuracy, \
+    two phases" --data ./plankton_sample/
+
+# The model is a slot, not a hard binding — same tools, same audit trail:
+autocodabench create "..." --backend ollama:llama3.1      # local, keyless
+autocodabench create "..." --backend openai:gpt-4o
+autocodabench validate-bundle bundle.zip --judged --backend ollama:llama3.1
+```
+
+`create` runs two isolated agent sessions — plan, then build — joined only
+by a locked, human-editable `implementation_plan.md`. The build agent acts
+exclusively through a typed MCP tool surface, so every authoring action is
+logged and the finished run is replayable.
+
+We support two authentication paths, in order of preference for local use.
+If Claude Code is installed and logged in (Pro/Max), no further
+configuration is needed: usage draws from the plan's monthly Agent SDK
+credit. Otherwise, export `ANTHROPIC_API_KEY`. Hosted multi-user
+deployments (such as the HF Space) must use an API key — see
+[`docs/INSTRUCTION_FOR_USER.md`](docs/INSTRUCTION_FOR_USER.md).
+
+## Documentation pointers
+
+The following table maps reader roles to the relevant documentation.
+
+| Reader | Document |
+|--------|----------|
+| **Evaluating this software** (demo walkthrough and repository tour) | [`docs/demo-for-reviewers.md`](docs/demo-for-reviewers.md) |
+| Asking what is scientifically tested, and how | [`docs/scientific-validation.md`](docs/scientific-validation.md) |
+| Using the CLI or library | [`docs/INSTRUCTION_FOR_USER.md`](docs/INSTRUCTION_FOR_USER.md) |
+| Trying the Web UI (Space or local `chainlit run`) | [`docs/INSTRUCTION_FOR_USER.md`](docs/INSTRUCTION_FOR_USER.md) §Web UI, then [`web/README.md`](web/README.md) to operate it |
+| Working on the package internals | [`docs/architecture.md`](docs/architecture.md) |
+| Skill provenance (the origin of each `SKILL.md`) | [`src/autocodabench/skills/<name>/README.md`](src/autocodabench/skills/) |
+| The end-to-end test harness | [`experiments/bundle_creation_test/README.md`](experiments/bundle_creation_test/README.md) |
+
+## Repository layout
+
+The table below summarizes the top-level structure of the repository.
+
+| Path | Contents |
+|------|----------|
+| `src/autocodabench/` | The library: core authoring, check framework, agent backends, plan→build pipeline, MCP server, CLI. |
+| `web/` | Chainlit chat UI — a consumer of the library, deployed by this Space. |
+| `experiments/` | The bundle-creation test harness (ground-truth competitions and a leakage-controlled pipeline). |
+| `tests/` | Unit suite — fast and fully keyless. |
 | `Dockerfile` | Used by HF Spaces to build the image. |
-| OpenAlex MCP | Installed from upstream `git+https://github.com/drAbreu/alex-mcp.git@v4.8.2` by the Dockerfile and locally — not vendored. |
-
-## What you need (operator)
-
-- An **Anthropic API key** (Anthropic API is *separate* from Claude
-  Max / Pro — set `ANTHROPIC_API_KEY` in HF Repository Secrets).
-- An email for the OpenAlex polite-pool (`OPENALEX_MAILTO`).
-- A shared password (`SHARED_PASSWORD`) gating the UI for invited
-  collaborators.
-- A Chainlit auth secret (`CHAINLIT_AUTH_SECRET`; run
-  `chainlit create-secret` once).
-
-Codabench credentials are no longer required as Repository Secrets —
-the Web UI's Publish form takes them from the user directly.
-Optionally set `CODABENCH_USERNAME` / `CODABENCH_PASSWORD` for CLI
-uploads via `autocodabench_upload_bundle`.
-
-See [`web/README.md`](web/README.md) §2 for the full deploy checklist.
-
-## How it talks to itself
-
-```
-  Browser ─► Chainlit UI ─► ClaudeSDKClient ─► api.anthropic.com
-                          │
-                          ├─► subprocess: python -m auto_codabench.mcp_server.server
-                          │      (open run, write plan, write bundle, validate, zip)
-                          ├─► subprocess: python -m alex_mcp.server
-                          │      (OpenAlex / PubMed / ORCID lookups)
-                          └─► POST /ac/upload-codabench  (FastAPI route mounted on
-                                 the same app — direct upload, no LLM cost)
-```
 
 ## License
 

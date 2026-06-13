@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [master, jmlr-oss-direction]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          - os: macos-latest
+            python-version: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: pip install -e '.[dev]'
+      - name: Unit tests (keyless by design)
+        run: python -m pytest tests/
+      - name: Core smoke test
+        run: python -m autocodabench.core.bundle_io
+      - name: Offline end-to-end (replay demo → validate zip)
+        run: |
+          autocodabench demo --out /tmp/acb-demo
+          autocodabench validate-bundle /tmp/acb-demo/demo-ai-text-detection.zip
+          autocodabench validate-bundle /tmp/acb-demo/demo-ai-text-detection --json > /tmp/report.json
+          python -c "import json; r = json.load(open('/tmp/report.json')); assert r['ok'], r"
+      - name: Wheel builds and ships package data
+        run: |
+          pip install build
+          python -m build --wheel
+          python - <<'PY'
+          import glob, zipfile
+          whl = glob.glob("dist/autocodabench-*.whl")[0]
+          names = zipfile.ZipFile(whl).namelist()
+          for required in (
+              "autocodabench/skills/plan/SKILL.md",
+              "autocodabench/skills/autocodabench-implement/SKILL.md",
+              "autocodabench/backends/fixtures/demo_bundle.jsonl",
+          ):
+              assert required in names, f"missing from wheel: {required}"
+          print("wheel OK:", whl)
+          PY

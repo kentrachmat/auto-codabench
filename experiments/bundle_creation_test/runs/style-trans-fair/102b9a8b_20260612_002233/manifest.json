@@ -1,0 +1,106 @@
+{
+  "competition_sample_name": "style-trans-fair",
+  "run_id": "102b9a8b_20260612_002233",
+  "branch": "jmlr-oss-direction",
+  "started_at": "2026-06-12T00:22:33Z",
+  "finished_at": "2026-06-12T01:49:07Z",
+  "expected_results": {
+    "sub_1": {
+      "metric": "geometric_mean_accuracy_metric",
+      "score": 0.0,
+      "tolerance": 0.001
+    }
+  },
+  "phases": [
+    {
+      "name": "preconditions",
+      "status": "pass",
+      "notes": "1 sub(s) discovered: sub_1"
+    },
+    {
+      "name": "plan",
+      "status": "pass",
+      "num_turns": 17,
+      "total_cost_usd": 2.751567,
+      "sections_covered": [
+        "1.task",
+        "2.data",
+        "3.metric",
+        "4.baseline",
+        "5.rules",
+        "6.ethics",
+        "7.schedule"
+      ],
+      "info_gaps_count": 7,
+      "error": null,
+      "artifacts": [
+        "specs/implementation_plan.md",
+        "plan_session.jsonl"
+      ]
+    },
+    {
+      "name": "implement_selfvalidate",
+      "status": "pass",
+      "num_turns": 86,
+      "total_cost_usd": 12.778487499999995,
+      "slug": "style-trans-fair",
+      "bundle_dir": "/Users/ktgiahieu/Documents/auto-codabench/experiments/bundle_creation_test/runs/style-trans-fair/102b9a8b_20260612_002233/bundles/style-trans-fair",
+      "zip_path": "/Users/ktgiahieu/Documents/auto-codabench/experiments/bundle_creation_test/runs/style-trans-fair/102b9a8b_20260612_002233/bundles/style-trans-fair.zip",
+      "validate_bundle": true,
+      "validate_runtime": true,
+      "env_name": "acb-run-102b9a8b_20260612_002233",
+      "baseline_status": "pass",
+      "baseline_scores": {
+        "gm": 0.01221970433734226,
+        "am": 0.34444444444444444,
+        "wga": 0.0
+      },
+      "baseline_attempts_used": 3,
+      "notebook_status": "pass",
+      "notebook_cells_executed": 6,
+      "notebook_attempts_used": 4,
+      "info_gaps_count": 4,
+      "error": null
+    },
+    {
+      "name": "reformat_run/sub_1",
+      "status": "fail",
+      "num_turns": 38,
+      "total_cost_usd": 5.23,
+      "stage_failed": "ingestion",
+      "error": "native-library hang during ingestion (TF/pyarrow abseil ABI deadlock class \u2014 see harness README 'Known limitations'). The submission's TF training stalled after Keras model build; the reformat session spent its budget bisecting the hang (probe scripts in session log) and exited without completing run_user_submission or emitting final JSON."
+    },
+    {
+      "name": "score_submissions",
+      "status": "fail",
+      "submissions": [
+        {
+          "sub": "sub_1",
+          "reformat_run_status": "fail",
+          "reformat_attempts_used": 1,
+          "audit_status": "fail",
+          "scores": null,
+          "expected_score": 0.0,
+          "actual_score": null,
+          "tolerance": 0.001,
+          "delta": null,
+          "within_tolerance": null,
+          "error": "no_score_produced \u2014 native-library hang during ingestion (TF/pyarrow abseil ABI deadlock class)"
+        }
+      ]
+    }
+  ],
+  "overall_status": "fail_at_score_submissions/sub_1",
+  "bundle_slug": "style-trans-fair",
+  "env_name": "acb-run-102b9a8b_20260612_002233",
+  "bundle_dir": "/Users/ktgiahieu/Documents/auto-codabench/experiments/bundle_creation_test/runs/style-trans-fair/102b9a8b_20260612_002233/bundles/style-trans-fair",
+  "missing_info_summary": {
+    "total": 0,
+    "by_stage": {},
+    "by_severity": {},
+    "by_impact_area": {},
+    "by_resolution_action": {},
+    "would_block_correct_scoring": 0,
+    "would_have_asked_user_if_interactive": 0
+  }
+}

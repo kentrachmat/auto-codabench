@@ -1,39 +1,44 @@
-.env
+# --- OS / editor ---
 .DS_Store
 .DS_Store?
 ._*
+
+# --- Python ---
 __pycache__/
 *.pyc
 .venv/
 *.egg-info/
-# Generated competition bundles (per-session output of stage 8).
-auto_codabench/bundles/
-# Claude Code's local skill/plugin symlinks.
-.claude/
+.pytest_cache/
+dist/
+build/
+
+# --- Secrets / local config ---
+.env
 # Local MCP server config (machine-specific paths + personal mailto).
 .mcp.json
-logs/
-auto_codabench/runs/*/
-auto_codabench/runs/LATEST
-.env
-# Reference PDFs are kept outside git
-*.pdf
-documentation/
-# Binary assets: HF Spaces rejects these unless tracked via Xet
-alex-mcp/*.png
-alex-mcp/*.jpg
-alex-mcp/*.jpeg
-alex-mcp/*.gif
-alex-mcp/*.webp
+# Claude Code's local skill/plugin symlinks (source of truth lives in
+# src/autocodabench/skills/ and experiments/; recreate with setup.sh).
+.claude/
 
+# --- autocodabench runtime artifacts ---
+# Workspace root for runs + bundles (AUTOCODABENCH_HOME default).
+.autocodabench/
+# Default output dir of `autocodabench demo`.
+autocodabench-demo/
+logs/
+
+# --- Experiment harness ---
+# Per-run output dirs are covered by experiments/bundle_creation_test/runs/.gitignore.
+# Reference PDFs (competition proposals) are kept outside git.
+*.pdf
+
+# --- Web UI runtime ---
 .chainlit/
-test_pdf_folder/
 # Chainlit local per-session attachment cache (auto-created next to web/).
 web/.files/
 # Per-session web runtime artifacts (manifest/plan/transcript/bundle HTML+zip).
 # Written at runtime by web/app.py; never source.
 web/public/sessions/
-# Experimental work lives on its own branches (e.g. experiment_test-bundle-creation).
-# Master should never carry experiment scaffolding, datasets, or per-run outputs.
-# Switch to the relevant experiment branch to see / commit experiment files.
-experiments/
+
+
+experiments/bundle_creation_test/runs/*/

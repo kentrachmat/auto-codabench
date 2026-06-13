@@ -1,0 +1,22 @@
+{
+  "metric": "geometric_mean_accuracy_metric",
+  "score": 0.0,
+  "tolerance": 0.001,
+  "details": {
+    "primary_score_key": "set2_test",
+    "scores": {
+      "set1_train": 0.526531098522,
+      "set2_test": 0.0
+    },
+    "raw_predictions": {
+      "set1": [0.4, 0.6, 0.5, 0.8, 0.9, 1.0, 0.45, 0.4, 0.2],
+      "set2": [0.35, 0.45, 0.2, 0.5, 0.5, 0.75, 0.25, 0.0, 0.1]
+    },
+    "competition": "STYLE-TRANS-FAIR",
+    "competition_url": "https://www.codabench.org/competitions/601/",
+    "docker_image": "ktgiahieu/codalab-legacy-with-tensorflow:3.8",
+    "submission_path": "ground_truth/sample_submissions/sub_1/submission/",
+    "source": "Captured from a real Codabench production run against the reference bundle under ground_truth/bundle/. The leaderboard's primary score is the test set (Set 2, 180 solutions); Set 1 (train, 90 solutions) is reported for diagnostic completeness only.",
+    "interpretation_note": "geometric_mean_accuracy_metric returns 0 whenever any per-class accuracy is exactly 0. In sub_1's set2 result, one of the 9 sub-task accuracies is 0.0, so the geometric mean is 0 even though the other 8 sub-tasks score positively. The runner agent should consider any |actual - 0.0| <= 0.001 as a pass."
+  }
+}

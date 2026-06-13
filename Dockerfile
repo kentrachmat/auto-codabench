@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 # HF Spaces runs as a non-root user (uid 1000). Create a matching one so
-# pip + writing to /app/auto_codabench/runs/ works without permission errors.
+# pip + writing to /app/.autocodabench/ works without permission errors.
 RUN useradd -m -u 1000 user
 WORKDIR /app
 
@@ -32,11 +32,11 @@ WORKDIR /app
 COPY --chown=user:user . /app
 
 # Install the two MCP packages so that
-# `python -m alex_mcp.server` and `python -m auto_codabench.mcp_server.server`
+# `python -m alex_mcp.server` and `python -m autocodabench.mcp.server`
 # work as the agent SDK spawns them.
 #   - alex-mcp: pinned upstream tag (the previously-vendored alex-mcp/ tree
 #     got corrupted; we install directly from GitHub now — it's not on PyPI).
-#   - auto_codabench: editable from the repo (our own code).
+#   - autocodabench: editable from the repo (our own code).
 RUN pip install --upgrade pip && \
     # Install fastmcp FIRST at the exact version we need. If we wait until
     # alex-mcp's `fastmcp>=2.8.1` resolves, pip's solver pulls 3.3.1 — and

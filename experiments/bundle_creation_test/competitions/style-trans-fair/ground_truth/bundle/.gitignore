@@ -1,0 +1,11 @@
+# Heavy upstream content (~7 MB of images, reference data, scoring code).
+# Populate this directory from the upstream repo per the parent README:
+#   ../README.md → "Populating bundle/"
+# Source: https://github.com/fnachalearn/style-trans-fair
+#
+# Ignore everything in this directory EXCEPT this .gitignore itself,
+# which serves the dual purpose of (a) listing the ignore rules and
+# (b) keeping the directory alive in git so the path exists before
+# the user runs the populate step.
+*
+!.gitignore

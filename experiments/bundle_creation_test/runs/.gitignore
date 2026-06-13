@@ -1,0 +1,7 @@
+# Per-run output dirs created by the bundle-creation-test skill. Each one holds
+# a complete bundle build + validation report + execution sandbox + MCP
+# audit trail — heavy and fully regeneratable. Force-add a specific
+# summary if you want to preserve it:
+#   git add -f runs/<comp>/<run_id>/manifest.json
+#   git add -f runs/<comp>/<run_id>/submission_run/sub_*/score.json
+*/[0-9a-f]*_*/

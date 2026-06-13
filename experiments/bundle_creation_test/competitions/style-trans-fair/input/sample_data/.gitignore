@@ -1,0 +1,10 @@
+# Heavy upstream dataset (~3 MB of images across content/, styles/,
+# stylized/, tasks/). Populate per README.md alongside this file.
+# Source: https://github.com/fnachalearn/style-trans-fair
+#
+# Ignore everything in this directory EXCEPT this .gitignore and the
+# adjacent README.md, so the directory itself stays alive in git and
+# the populate instructions are discoverable in-place.
+*
+!.gitignore
+!README.md

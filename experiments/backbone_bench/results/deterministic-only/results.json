@@ -1,0 +1,114 @@
+{
+  "generated_at": "2026-06-12T00:48:34+00:00",
+  "backend": null,
+  "model_override": null,
+  "runs_per_judged_condition": 1,
+  "defects": [
+    {
+      "defect": "missing-page",
+      "tier": "deterministic",
+      "expect_check": "bundle-schema",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "a page referenced from competition.yaml is deleted"
+    },
+    {
+      "defect": "unwritten-leaderboard-key",
+      "tier": "deterministic",
+      "expect_check": "bundle-schema",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "scoring program stops writing a leaderboard column key"
+    },
+    {
+      "defect": "no-daily-cap",
+      "tier": "deterministic",
+      "expect_check": "daily-submission-cap",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "development phase loses its per-day submission cap"
+    },
+    {
+      "defect": "short-dev-phase",
+      "tier": "deterministic",
+      "expect_check": "dev-phase-duration",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "development phase shrunk to 10 days"
+    },
+    {
+      "defect": "no-sorting",
+      "tier": "deterministic",
+      "expect_check": "leaderboard-sorting",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "primary leaderboard column loses its sorting direction"
+    },
+    {
+      "defect": "final-unlimited",
+      "tier": "deterministic",
+      "expect_check": "final-phase-submission-limit",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "final phase allows 50 total submissions"
+    },
+    {
+      "defect": "kit-missing",
+      "tier": "deterministic",
+      "expect_check": "starting-kit",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "starting kit removed"
+    },
+    {
+      "defect": "single-phase",
+      "tier": "deterministic",
+      "expect_check": "two-phase-structure",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "final phase dropped (single-phase competition)"
+    },
+    {
+      "defect": "docker-unpinned",
+      "tier": "deterministic",
+      "expect_check": "docker-image-pinned",
+      "runs": 1,
+      "caught": 1,
+      "catch_rate": 1.0,
+      "description": "docker image no longer pinned"
+    },
+    {
+      "defect": "caps-contradiction",
+      "tier": "judged",
+      "expect_check": "judged-docs-config-consistency",
+      "runs": 0,
+      "caught": null,
+      "note": "skipped \u2014 no --backend"
+    },
+    {
+      "defect": "metric-direction-contradiction",
+      "tier": "judged",
+      "expect_check": "judged-docs-config-consistency",
+      "runs": 0,
+      "caught": null,
+      "note": "skipped \u2014 no --backend"
+    },
+    {
+      "defect": "phase-dates-contradiction",
+      "tier": "judged",
+      "expect_check": "judged-docs-config-consistency",
+      "runs": 0,
+      "caught": null,
+      "note": "skipped \u2014 no --backend"
+    }
+  ],
+  "judged_false_positive": null
+}

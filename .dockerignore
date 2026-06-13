@@ -6,8 +6,8 @@
 .env.example
 
 # Generated / per-session
-auto_codabench/runs/
-auto_codabench/bundles/
+.autocodabench/
+autocodabench-demo/
 logs/
 
 # Python caches
@@ -29,8 +29,13 @@ __pycache__/
 .idea/
 .vscode/
 
-# Documentation we don't need at runtime (saves a few MB)
-documentation/competition_best_practices/*.pdf
+# Not needed at runtime in the Space image (the experiments tree alone is ~50MB)
+documentation/
+experiments/
+tests/
+docs/
+scripts/
+.github/
 
 # Git internals
 .git/
