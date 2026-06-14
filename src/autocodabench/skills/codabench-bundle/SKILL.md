@@ -127,11 +127,11 @@ version: 2
 title: Compute Pi
 image: images/pi.png
 terms: pages/terms.md
+docker_image: codalab/codalab-legacy:py37 # default docker image
 
 # Optional
 description: Calculate pi to as many digits as possible, as quick as you can.
 registration_auto_approve: True
-docker_image: codalab/codalab-legacy:py37 # default docker image
 make_programs_available: True
 make_input_data_available: False
 enable_detailed_results: True
