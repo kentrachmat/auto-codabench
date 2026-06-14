@@ -84,6 +84,7 @@ verbatim from `Yaml-Structure.md` and `Competition-Bundle-Structure.md`.
 | `version`| int    | Must be `2` for any new bundle.                                                            |
 | `title`  | string | Competition title.                                                                         |
 | `image`  | path   | Path to competition logo (png/jpg), relative to `competition.yaml`.                        |
+| `docker_image` | string  | DockerHub `username/image:tag`, default value:`codalab/codalab-legacy:py3` |
 | `terms`  | path   | Path to a markdown or HTML page with terms of participation.                               |
 | `pages`  | list   | List of `{title, file}` entries shown as tabs. See §4.                                     |
 | `phases` | list   | At least one phase. See §5.                                                                |
@@ -102,7 +103,6 @@ Prefer `leaderboards:` per the structure doc.
 |----------------------------------------------|---------|-------------------------------|----------------------------------------------------------------------|
 | `description`                                | string  | —                             | Short blurb shown on listing.                                        |
 | `registration_auto_approve`                  | bool    | `False`                       | If `True`, participation requests skip manual approval.              |
-| `docker_image`                               | string  | `codalab/codalab-legacy:py3`  | DockerHub `username/image:tag`.                                      |
 | `make_programs_available`                    | bool    | —                             | Share ingestion+scoring program with participants.                   |
 | `make_input_data_available`                  | bool    | —                             | Share input data with participants.                                  |
 | `queue`                                      | string  | default queue                 | Vhost of a custom compute queue.                                     |
@@ -218,8 +218,8 @@ non-overlapping.
 | key      | type   | notes                                                                       |
 |----------|--------|-----------------------------------------------------------------------------|
 | `name`   | string | Phase name shown in the UI.                                                 |
-| `start`  | string | ISO datetime, `YYYY-MM-DD HH:MM:SS`, UTC.                                   |
-| `end`    | string | ISO datetime. Optional **only** for the final phase (then phase is open-ended). |
+| `start`  | string | ISO datetime, `YYYY-MM-DD HH:MM:SS`, UTC. Must be **strictly after** the previous phase's `end` (even by one second). |
+| `end`    | string | ISO datetime. Optional **only** for the final phase (then phase is open-ended). Must be **strictly before** the next phase's `start`. |
 | `tasks`  | list[int] | Indexes into the top-level `tasks:` list.                                |
 
 ### Optional per phase
