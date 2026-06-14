@@ -942,7 +942,7 @@ def run_starting_kit(slug: str, env_name: str,
     shutil.copy2(nb, executed)
 
     cmd = (f"{_conda_run_prefix(env_name)} "
-           f"jupyter execute --inplace --allow-errors=false "
+           f"jupyter execute --inplace --NbClientApp.allow_errors=False "
            f"{shlex.quote(str(executed))}")
     log_event("run_starting_kit_started", slug=slug, notebook=str(nb))
     res = _bash(cmd, cwd=bundle_dir,

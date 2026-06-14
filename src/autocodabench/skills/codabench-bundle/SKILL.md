@@ -618,8 +618,9 @@ file for result contests).
 - Format: `.png` or `.jpg`.
 - Path is relative to `competition.yaml`, e.g. `image: logo.png` or
   `image: images/pi.png`.
-- File size limit: `# (docs unclear — verify on platform)` — the docs
-  do not state a hard limit. Keep under ~1 MB to be safe.
+- **Size: 200×200 pixels.** Generate a solid-color or simple patterned
+  200×200 PNG using only the Python standard library (no Pillow required):
+- File size limit: the docs do not state a hard limit. Keep under ~1 MB to be safe.
 
 ### Terms (`terms:`)
 

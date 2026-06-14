@@ -597,8 +597,18 @@ def _self_test():
     with tempfile.TemporaryDirectory() as tmp:
         slug = "demo"
         init_bundle(slug, root_dir=tmp, overwrite=True)
-        # tiny logo placeholder + terms page
-        (Path(tmp) / slug / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+        # 200x200 logo placeholder
+        import base64 as _b64, zlib as _zlib, struct as _struct
+        def _make_png(w, h, r, g, b):
+            def _chunk(tag, data):
+                c = _struct.pack(">I", len(data)) + tag + data
+                return c + _struct.pack(">I", _zlib.crc32(tag + data) & 0xFFFFFFFF)
+            raw = (b"\x00" + bytes([r, g, b]) * w) * h
+            return (b"\x89PNG\r\n\x1a\n"
+                    + _chunk(b"IHDR", _struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+                    + _chunk(b"IDAT", _zlib.compress(raw, 9))
+                    + _chunk(b"IEND", b""))
+        (Path(tmp) / slug / "logo.png").write_bytes(_make_png(200, 200, 99, 120, 220))
         write_page(slug, "terms.md", "# Terms\nBy participating, you agree to play fair.", root_dir=tmp)
         write_page(slug, "overview.md", "# Overview\nClassify AI-generated text.", root_dir=tmp)
         write_scoring_program(
