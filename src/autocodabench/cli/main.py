@@ -4,12 +4,18 @@ Entry points are tiered by their authentication demands, keyless first:
 
   autocodabench validate-bundle BUNDLE [--facts F] [--judged]  # keyless (unless --judged)
   autocodabench demo [--out DIR]                               # keyless replay demo
-  autocodabench create "IDEA" [--data PATH]                    # agentic; subscription or API key
+  autocodabench plan-competition "IDEA" [--data PATH]          # Phase 1 only
+  autocodabench create-bundle [plan.md | --run-dir DIR]        # Phase 2 only
+  autocodabench create "IDEA" [--data PATH]                    # Phase 1 + 2 + validate
   autocodabench auth status [--no-probe]   # report, pick, and verify via a live turn
   autocodabench checks list
 
 ``validate-bundle`` validates any bundle — including hand-written ones that
 never touched an agent (``validate`` remains as a back-compatible alias).
+
+``plan-competition`` and ``create-bundle`` let you run the two agentic phases
+independently. ``plan-competition`` prints its run directory on completion so
+you can pass it to ``create-bundle --run-dir`` to reuse the same run.
 
 The CLI is a thin argument-parsing layer over the library: it contributes
 ``.env`` loading and the live-auth preflight, and contains no validation
@@ -384,6 +390,242 @@ def _cmd_create(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------------------
+# plan-competition  (Phase 1 standalone)
+# ---------------------------------------------------------------------------
+
+def _print_plan_config(*, idea, backend_name, auth_label, model, run_dir,
+                        data, max_budget_usd, verbosity) -> None:
+    budget = f"${max_budget_usd:.2f}" if max_budget_usd else "no cap"
+    print("autocodabench plan-competition — configuration")
+    print(f"  idea:        {textwrap.shorten(idea, width=72)}")
+    print(f"  backend:     {backend_name}  ({auth_label})")
+    print(f"  model:       {model}")
+    print(f"  output/run dir:  {run_dir}")
+    print(f"  sample data: {data or '(none)'}")
+    print(f"  cost cap:    {budget}")
+    print(f"  output mode: {verbosity}")
+    print( "  output:      specs/implementation_plan.md inside the run dir above")
+
+
+def _cmd_plan_competition(args: argparse.Namespace) -> int:
+    from ..agent.pipeline import plan_async
+    from ..run_log import open_run
+
+    if not _require_live_claude_auth(args.backend):
+        return 2
+
+    if args.backend:
+        from ..backends import resolve_backend
+        backend = resolve_backend(args.backend, model=args.model)
+    else:
+        from ..backends import get_claude_backend
+        backend = (get_claude_backend(model=args.model) if args.model
+                   else get_claude_backend())
+    model_shown = getattr(backend, "model", args.model or "(backend default)")
+    if backend.name == "claude":
+        from ..auth import resolve_auth
+        auth_label = {
+            "subscription": "subscription login",
+            "api_key": "ANTHROPIC_API_KEY",
+            "none": "no auth configured",
+        }.get(resolve_auth().effective, "unknown")
+    else:
+        auth_label = "own credentials"
+
+    debug = bool(args.debug)
+    verbosity = ("quiet (final summary only)" if args.quiet
+                 else "debug (full developer trace)" if debug
+                 else "summary (user-oriented progress)")
+
+    # Pre-create the run dir so the config banner can show it.
+    run_dir = open_run(slug="plan").path
+
+    print()
+    _print_plan_config(
+        idea=args.idea, backend_name=backend.name, auth_label=auth_label,
+        model=model_shown, run_dir=run_dir, data=args.data,
+        max_budget_usd=args.max_budget_usd, verbosity=verbosity)
+
+    if sys.stdin.isatty() and not args.yes:
+        def _abort() -> int:
+            import shutil
+            shutil.rmtree(run_dir, ignore_errors=True)
+            os.environ.pop("AUTOCODABENCH_RUN_DIR", None)
+            print("aborted (no run created)", file=sys.stderr)
+            return 130
+        try:
+            if input("\nStart planning? [Y/n]: ").strip().lower() not in ("", "y", "yes"):
+                return _abort()
+        except (EOFError, KeyboardInterrupt):
+            print(file=sys.stderr)
+            return _abort()
+
+    renderer = None if args.quiet else _make_progress_renderer(debug=debug)
+
+    result = asyncio.run(plan_async(
+        args.idea,
+        data=args.data,
+        backend=backend,
+        model=args.model,
+        max_budget_usd=args.max_budget_usd,
+        on_event=renderer,
+    ))
+
+    print("\n" + "═" * 60)
+    print("Done." if result.ok else "Planning failed.")
+    print(f"  run dir:  {result.run_dir}")
+    print(f"  plan:     {result.plan_path}")
+    print(f"  cost:     ${result.total_cost_usd:.2f}")
+    if result.ok:
+        print(
+            f"\n  → To build the bundle from this plan:\n"
+            f"    autocodabench create-bundle --run-dir {result.run_dir}"
+        )
+    if not result.ok:
+        print(f"\nplan-competition failed: {result.error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# create-bundle  (Phase 2 standalone)
+# ---------------------------------------------------------------------------
+
+def _print_bundle_config(*, plan_source, backend_name, auth_label, model,
+                          run_dir, max_budget_usd, validate, verbosity) -> None:
+    budget = f"${max_budget_usd:.2f}" if max_budget_usd else "no cap"
+    print("autocodabench create-bundle — configuration")
+    print(f"  plan:        {plan_source}")
+    print(f"  backend:     {backend_name}  ({auth_label})")
+    print(f"  model:       {model}")
+    print(f"  output/run dir:  {run_dir}")
+    print(f"  cost cap:    {budget}")
+    print(f"  output mode: {verbosity}")
+    print( "  pipeline:    1) build → bundle + zip (via the MCP tools)")
+    print(f"               2) validate → {'registered checks' if validate else 'skipped'}")
+    print( "  artifacts:   bundle, zip, and a full tool-call audit trail")
+    print( "               land under the output/run dir above.")
+
+
+def _cmd_create_bundle(args: argparse.Namespace) -> int:
+    from ..agent.pipeline import bundle_async
+    from ..run_log import open_run
+
+    # Resolve the two mutually-exclusive input modes first — cheap argument
+    # validation should not require a live-auth probe to reject malformed input.
+    run_dir_arg = Path(args.run_dir).resolve() if args.run_dir else None
+    plan_arg    = Path(args.plan).resolve()    if args.plan    else None
+
+    if run_dir_arg is not None and plan_arg is not None:
+        print("error: pass either a plan file or --run-dir, not both",
+              file=sys.stderr)
+        return 2
+    if run_dir_arg is None and plan_arg is None:
+        print("error: pass a plan file (plan-competition.md) or --run-dir <path>",
+              file=sys.stderr)
+        return 2
+
+    if run_dir_arg is not None:
+        if not run_dir_arg.is_dir():
+            print(f"error: run dir not found: {run_dir_arg}", file=sys.stderr)
+            return 2
+        spec = run_dir_arg / "specs" / "implementation_plan.md"
+        if not spec.is_file():
+            print(f"error: no specs/implementation_plan.md in {run_dir_arg}",
+                  file=sys.stderr)
+            return 2
+        run_dir      = run_dir_arg
+        plan_source  = str(spec)
+        bundle_kwargs = {"run_dir": run_dir}
+    else:
+        if not plan_arg.is_file():
+            print(f"error: plan file not found: {plan_arg}", file=sys.stderr)
+            return 2
+
+    if not _require_live_claude_auth(args.backend):
+        return 2
+
+    if plan_arg is not None and run_dir_arg is None:
+        # Pre-create a fresh run dir so the config banner can name it.
+        run_dir      = open_run(slug="bundle").path
+        plan_source  = str(plan_arg)
+        bundle_kwargs = {"plan_path": plan_arg}
+
+    if args.backend:
+        from ..backends import resolve_backend
+        backend = resolve_backend(args.backend, model=args.model)
+    else:
+        from ..backends import get_claude_backend
+        backend = (get_claude_backend(model=args.model) if args.model
+                   else get_claude_backend())
+    model_shown = getattr(backend, "model", args.model or "(backend default)")
+    if backend.name == "claude":
+        from ..auth import resolve_auth
+        auth_label = {
+            "subscription": "subscription login",
+            "api_key": "ANTHROPIC_API_KEY",
+            "none": "no auth configured",
+        }.get(resolve_auth().effective, "unknown")
+    else:
+        auth_label = "own credentials"
+
+    debug = bool(args.debug)
+    verbosity = ("quiet (final summary only)" if args.quiet
+                 else "debug (full developer trace)" if debug
+                 else "summary (user-oriented progress)")
+
+    print()
+    _print_bundle_config(
+        plan_source=plan_source, backend_name=backend.name, auth_label=auth_label,
+        model=model_shown, run_dir=run_dir, max_budget_usd=args.max_budget_usd,
+        validate=not args.no_validate, verbosity=verbosity)
+
+    if sys.stdin.isatty() and not args.yes:
+        def _abort() -> int:
+            if plan_arg is not None:
+                import shutil
+                shutil.rmtree(run_dir, ignore_errors=True)
+                os.environ.pop("AUTOCODABENCH_RUN_DIR", None)
+            print("aborted", file=sys.stderr)
+            return 130
+        try:
+            if input("\nStart building? [Y/n]: ").strip().lower() not in ("", "y", "yes"):
+                return _abort()
+        except (EOFError, KeyboardInterrupt):
+            print(file=sys.stderr)
+            return _abort()
+
+    renderer = None if args.quiet else _make_progress_renderer(debug=debug)
+
+    result = asyncio.run(bundle_async(
+        **bundle_kwargs,
+        backend=backend,
+        model=args.model,
+        max_budget_usd=args.max_budget_usd,
+        validate=not args.no_validate,
+        on_event=renderer,
+    ))
+
+    print("\n" + "═" * 60)
+    print("Done." if result.ok else "Bundle creation failed.")
+    print(f"  run dir:   {result.run_dir}")
+    print(f"  bundle:    {result.bundle_dir}")
+    print(f"  zip:       {result.zip_path}")
+    image = _bundle_docker_image(result.bundle_dir)
+    if image:
+        print(f"  docker:    {image}  (declared in competition.yaml; what "
+              "Codabench will run)")
+    print(f"  cost:      ${result.total_cost_usd:.2f}")
+    if result.validation is not None:
+        print()
+        print(result.validation.to_markdown())
+    if not result.ok:
+        print(f"\ncreate-bundle failed: {result.error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # auth
 # ---------------------------------------------------------------------------
 
@@ -524,6 +766,51 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--replay", action="store_true",
                    help="(default behavior; flag kept for clarity)")
     p.set_defaults(func=_cmd_demo)
+
+    p = sub.add_parser("plan-competition",
+                       help="Phase 1 only: plan a competition and save "
+                            "implementation_plan.md (needs an LLM backend)")
+    p.add_argument("idea", help="one-line competition idea or proposal text")
+    p.add_argument("--data", help="path to sample data the planner may inspect")
+    p.add_argument("--backend", default=None,
+                   help="LLM backend: claude[:model] (default), ollama:<model>, "
+                        "openai:<model>, or an OpenAI-compatible URL with '#<model>'")
+    p.add_argument("--model", help="model override for the agent session")
+    p.add_argument("--max-budget-usd", type=float, default=None,
+                   help="cost cap for this phase")
+    p.add_argument("--yes", "-y", action="store_true",
+                   help="do not prompt to confirm before starting")
+    p.add_argument("--debug", action="store_true",
+                   help="print the full developer trace")
+    p.add_argument("--quiet", action="store_true",
+                   help="suppress progress; print only the final summary")
+    p.set_defaults(func=_cmd_plan_competition)
+
+    p = sub.add_parser("create-bundle",
+                       help="Phase 2 only: build a Codabench bundle from a plan "
+                            "(needs an LLM backend)")
+    p.add_argument("plan", nargs="?", default=None,
+                   help="path to implementation_plan.md — a fresh run dir is "
+                        "auto-created (mutually exclusive with --run-dir)")
+    p.add_argument("--run-dir", default=None,
+                   help="existing run dir produced by plan-competition; the plan "
+                        "is read from <run-dir>/specs/implementation_plan.md "
+                        "(mutually exclusive with the positional plan argument)")
+    p.add_argument("--no-validate", action="store_true",
+                   help="skip the post-build validation pass")
+    p.add_argument("--backend", default=None,
+                   help="LLM backend: claude[:model] (default), ollama:<model>, "
+                        "openai:<model>, or an OpenAI-compatible URL with '#<model>'")
+    p.add_argument("--model", help="model override for the agent session")
+    p.add_argument("--max-budget-usd", type=float, default=None,
+                   help="cost cap for this phase")
+    p.add_argument("--yes", "-y", action="store_true",
+                   help="do not prompt to confirm before starting")
+    p.add_argument("--debug", action="store_true",
+                   help="print the full developer trace")
+    p.add_argument("--quiet", action="store_true",
+                   help="suppress progress; print only the final summary")
+    p.set_defaults(func=_cmd_create_bundle)
 
     p = sub.add_parser("create", help="agentic plan→build pipeline (needs an LLM backend)")
     p.add_argument("idea", help="one-line competition idea or proposal text")
