@@ -87,12 +87,21 @@ async def autocodabench_search_kaggle_competitions(
             api = _authed_api()
         except ImportError:
             return {"error": "the Kaggle research source requires the 'kaggle' "
-                             "package — install autocodabench[research]."}
+                             "package — it ships with the base install; reinstall autocodabench."}
         except Exception as e:  # auth / network
             return {"error": f"Kaggle authentication failed: {type(e).__name__}: {e}"}
         try:
             resp = api.competitions_list(search=query)
-            comps = getattr(resp, "competitions", None) or list(resp)
+            # kaggle >=2.x returns an ApiListCompetitionsResponse whose
+            # `.competitions` is a list (possibly empty); older kaggle returned a
+            # plain iterable. Handle both — and never fall through to `list(resp)`
+            # on an empty result, which would raise (the response isn't iterable).
+            comps = getattr(resp, "competitions", None)
+            if comps is None:
+                try:
+                    comps = list(resp)
+                except TypeError:
+                    comps = []
             records = [_competition_record(c) for c in comps[: max(1, limit)]]
             return {"query": query, "count": len(records), "competitions": records}
         except Exception as e:
@@ -127,7 +136,7 @@ async def autocodabench_get_kaggle_competition(
             api = _authed_api()
         except ImportError:
             return {"error": "the Kaggle research source requires the 'kaggle' "
-                             "package — install autocodabench[research]."}
+                             "package — it ships with the base install; reinstall autocodabench."}
         except Exception as e:
             return {"error": f"Kaggle authentication failed: {type(e).__name__}: {e}"}
         try:

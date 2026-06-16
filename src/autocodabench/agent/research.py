@@ -47,7 +47,7 @@ from pathlib import Path
 # PUBLIC competitions out of the box without the user supplying a secret. Users
 # are encouraged to generate their own at https://www.kaggle.com/settings/api
 # and set KAGGLE_API_TOKEN (or ~/.kaggle/access_token); this is only a fallback.
-_KAGGLE_FALLBACK_TOKEN = "KGAT_91c6614cd364fd4aedafafa664434e02"
+_KAGGLE_FALLBACK_TOKEN = "KGAT_a440cc408e3a8f3175848842afa5bd04"
 
 # OpenAlex external server: launched via npx (Node), overridable via env for
 # pip/global installs. The first token is the launcher we check for on PATH.
@@ -193,7 +193,7 @@ def resolve(config: ResearchConfig | None, *, backend=None) -> ResolvedResearch:
         sources["kaggle"] = "unavailable: backbone has no MCP support (Claude only)"
     elif importlib.util.find_spec("kaggle") is None:
         sources["kaggle"] = ("unavailable: the 'kaggle' package is not installed "
-                             "(pip install autocodabench[research])")
+                             "(it ships with the base install — reinstall autocodabench)")
     else:
         tok, user_supplied = kaggle_token()
         if tok:

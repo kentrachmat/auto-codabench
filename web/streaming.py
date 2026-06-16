@@ -15,6 +15,9 @@ from pathlib import Path
 import chainlit as cl
 from claude_agent_sdk import (
     AssistantMessage,
+    CLIConnectionError,
+    CLIJSONDecodeError,
+    ProcessError,
     RateLimitEvent,
     ResultMessage,
     SystemMessage,
@@ -37,6 +40,39 @@ from autocodabench.cli.progress import (
 )
 
 log = logging.getLogger("autocodabench.web.streaming")
+
+# A turn dies most often on HF not from a bug but from a transient drop of the
+# CLI's OUTBOUND HTTPS stream to the Anthropic API ("API Error: The socket
+# connection was closed unexpectedly"). That failure is on the api.anthropic.com
+# side — the local Python↔CLI stdio connection is still alive — so simply
+# re-issuing the same query recovers the turn AND keeps the session's context.
+_TURN_RETRY_ERRORS = (CLIConnectionError, CLIJSONDecodeError, ProcessError)
+_TURN_MAX_ATTEMPTS = 3  # 1 initial + 2 retries
+
+# Substrings that mark a transient/retryable API or network failure surfaced as a
+# generic exception (the CLI relays the underlying fetch error text verbatim).
+_TRANSIENT_MARKERS = (
+    "socket connection was closed",
+    "socket hang up",
+    "connection closed",
+    "connection reset",
+    "econnreset",
+    "epipe",
+    "etimedout",
+    "network error",
+    "api error",
+    "overloaded",
+    "timeout",
+    "timed out",
+)
+
+
+def _is_transient_turn_error(exc: BaseException) -> bool:
+    """True if *exc* looks like a retryable transient API/network drop."""
+    if isinstance(exc, _TURN_RETRY_ERRORS):
+        return True
+    s = str(exc).lower()
+    return any(m in s for m in _TRANSIENT_MARKERS)
 
 # Tools we don't surface as their own log line — pure agent machinery that
 # would only add clutter (file reads, searches, tool loading, skills).
@@ -179,6 +215,18 @@ class TurnView:
         self._working = True
         self._task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
+
+    def reset(self) -> None:
+        """Discard all rendered items so a retried turn starts from a clean slate.
+
+        Keeps the same Chainlit message and running animator; only the content
+        (tool lines, narration, status, elapsed clock) is cleared.
+        """
+        self._items = []
+        self._tool_pos = {}
+        self._status = ""
+        self._t0 = time.monotonic()
+        self._frame = 0
 
     # -- content assembly ---------------------------------------------------
     def _tail(self) -> str:
@@ -326,9 +374,10 @@ async def run_agent_turn(
     view = TurnView(response_msg)
 
     log.info("[turn] START — prompt %.80r", prompt)
-    try:
-        view.start()  # show the "Composing…" line immediately, before any wait
-        log.info("[turn] calling client.query()")
+
+    async def _stream_once() -> None:
+        """One attempt at the query + receive loop (retried on transient drops)."""
+        nonlocal msg_count
         await client.query(prompt)
         log.info("[turn] client.query() returned — entering receive_response() loop")
 
@@ -476,6 +525,36 @@ async def run_agent_turn(
                     ).send()
 
         log.info("[turn] receive_response() loop exited normally after %d messages", msg_count)
+
+    try:
+        view.start()  # show the "Composing…" line immediately, before any wait
+        for _attempt in range(1, _TURN_MAX_ATTEMPTS + 1):
+            # A retry re-runs the whole turn, so wipe the per-attempt accumulators
+            # and the partially-rendered view before re-issuing the query. The
+            # CLI↔Python connection survives an outbound API drop, so re-querying
+            # resumes with the session's context intact.
+            turn_parts.clear()
+            tool_idx_by_id.clear()
+            msg_count = 0
+            if _attempt > 1:
+                view.reset()
+            try:
+                log.info("[turn] streaming attempt %d/%d", _attempt, _TURN_MAX_ATTEMPTS)
+                await _stream_once()
+                break  # turn completed — leave the retry loop
+            except Exception as inner:
+                if _is_transient_turn_error(inner) and _attempt < _TURN_MAX_ATTEMPTS:
+                    log.warning(
+                        "[turn] transient error on attempt %d/%d: %s: %s — retrying",
+                        _attempt, _TURN_MAX_ATTEMPTS, type(inner).__name__, inner,
+                    )
+                    await view.add_note(
+                        "⚠️",
+                        f"connection dropped — retrying ({_attempt}/{_TURN_MAX_ATTEMPTS - 1})…",
+                    )
+                    await asyncio.sleep(1.5 * _attempt)
+                    continue
+                raise
 
     except Exception as e:
         log.exception("[turn] EXCEPTION in run_agent_turn: %s: %s", type(e).__name__, e)

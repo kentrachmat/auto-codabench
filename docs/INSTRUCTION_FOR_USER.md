@@ -212,7 +212,7 @@ than the model's training data alone:
   email (`OPENALEX_EMAIL`).
 - **Kaggle** — how similar competitions are hosted (metric, submission caps,
   team-size limits, deadlines, full rules pages), via first-party tools that
-  wrap the Kaggle SDK. Install with `pip install autocodabench[research]`. Reads
+  wrap the Kaggle SDK (the `kaggle` package ships in the base install). Reads
   **public** competitions only and needs no key from you — a shared throw-away
   token is used unless you set `KAGGLE_API_TOKEN` (or have `~/.kaggle/`), with
   your own token from <https://www.kaggle.com/settings/api>.

@@ -103,6 +103,32 @@ credit. Otherwise, export `ANTHROPIC_API_KEY`. Hosted multi-user
 deployments (such as the HF Space) must use an API key — see
 [`docs/INSTRUCTION_FOR_USER.md`](docs/INSTRUCTION_FOR_USER.md).
 
+## Web UI
+
+A Chainlit chat UI (`web/`) wraps the same library in a guided, three-phase
+workspace (plan → build → validate). There are two ways to use it.
+
+**Host it yourself.** Copy `.env.example` to `.env` and fill in at least
+`SHARED_PASSWORD` (gates the app) and a Claude auth path — a logged-in Claude
+Code subscription for local single-user use, or `ANTHROPIC_API_KEY` for any
+multi-user deployment. Then:
+
+```bash
+pip install -e . && pip install -r web/requirements.txt
+cd web && chainlit run app.py --host 127.0.0.1 --port 8500 -h
+```
+
+Open <http://127.0.0.1:8500> and sign in with your `SHARED_PASSWORD`. See
+[`web/README.md`](web/README.md) for the full operator guide and
+[`docs/INSTRUCTION_FOR_USER.md`](docs/INSTRUCTION_FOR_USER.md) §Web UI for the
+walkthrough.
+
+**Or try our hosted demo.** Email
+[autocodabench@googlegroups.com](mailto:autocodabench@googlegroups.com) and we
+will set you up with an account — and a small amount of free credit — to log
+in at <https://ktgiahieu-autocodabench-alpha.hf.space/login> and test the full
+pipeline without installing anything.
+
 ## Documentation pointers
 
 The following table maps reader roles to the relevant documentation.

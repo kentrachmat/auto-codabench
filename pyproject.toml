@@ -35,19 +35,22 @@ dependencies = [
     # The agentic layer. Imported lazily — the deterministic validator and
     # replay demo work even where the bundled Claude Code runtime can't run.
     "claude-agent-sdk>=0.2.80",
+    # Phase-1 research: `kaggle` powers the first-party Kaggle competition
+    # discovery tools (search + full description) in the MCP server. Imported
+    # lazily, so the keyless validator/replay paths never load it — but it now
+    # ships in the base install so a plain `pip install -e .` (and the HF Space
+    # image) has the full agentic capability with no extra. The OpenAlex source
+    # uses the external `openalex-research-mcp` server via `npx` (no Python dep).
+    "kaggle>=1.6",
 ]
 
 [project.optional-dependencies]
+# Test-only tooling — deliberately NOT in base deps so the runtime install
+# (and the HF Space image) never pull a test framework. Run the suite with
+# `pip install -e '.[dev]'`.
 dev = [
     "pytest>=7.3.1",
     "pytest-asyncio>=0.21.0",
-]
-# Phase-1 research sources. `kaggle` powers the first-party Kaggle competition
-# tools (search + full description) in the MCP server; it is imported lazily so
-# the keyless validator/replay paths never load it. The OpenAlex source uses the
-# external `openalex-research-mcp` server via `npx` (Node, no Python dep).
-research = [
-    "kaggle>=1.6",
 ]
 
 [project.urls]
