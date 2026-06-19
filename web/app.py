@@ -90,6 +90,16 @@ async def on_message(msg: cl.Message):
     await SessionManager.on_message(msg)
 
 
+@cl.on_settings_update
+async def on_settings_update(settings: dict):
+    """Backs the model selector docked at the input bar (cl.ChatSettings).
+
+    Fires whenever the user changes a setting mid-conversation — we hot-swap
+    the live SDK client's model with client.set_model(), preserving context.
+    """
+    await SessionManager.on_settings_update(settings)
+
+
 @cl.on_chat_end
 async def on_chat_end():
     await SessionManager.on_chat_end()

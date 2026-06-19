@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import chainlit as cl
+from chainlit.input_widget import Select
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
 from artifacts import PublicArtifacts, Transcript, utc_now
@@ -25,6 +26,8 @@ from config import (
     CONTEXT_WINDOW_TOKENS,
     DEFAULT_MODEL,
     MAX_USD_PER_SESSION,
+    MODEL_CHOICES,
+    MODEL_LABELS,
     PHASE_PLAN,
     PHASE_TITLE,
     PHASE_VALIDATE,
@@ -239,6 +242,13 @@ class SessionManager:
         mode = await SessionManager._ask_entry_mode()
         cl.user_session.set("entry_mode", mode)
 
+        # Dock a model selector at the input bar (Claude.ai-style). The user can
+        # switch model any time mid-conversation; on_settings_update hot-swaps it
+        # on the live SDK client via set_model(), so context is preserved.
+        settings = await SessionManager._send_model_settings()
+        model = settings.get("model") or DEFAULT_MODEL
+        cl.user_session.set("model", model)
+
         if mode == "validate":
             # Option B — validate an existing bundle. Land on Phase 3, no agent;
             # the user uploads a .zip and we run the check framework on it.
@@ -250,7 +260,8 @@ class SessionManager:
         else:
             # Option A — create from scratch. Phase 1 agent session.
             cl.user_session.set("phase", PHASE_PLAN)
-            client = ClaudeSDKClient(options=_build_sdk_options(run_dir, PHASE_PLAN, mcp_servers))
+            client = ClaudeSDKClient(
+                options=_build_sdk_options(run_dir, PHASE_PLAN, mcp_servers, model))
             await client.connect()
             cl.user_session.set("client", client)
             await SessionManager._send_create_greeting(session_id)
@@ -283,6 +294,63 @@ class SessionManager:
         return ((res or {}).get("payload", {}) or {}).get("mode") or "create"
 
     @staticmethod
+    async def _send_model_settings(initial: str | None = None) -> dict:
+        """Dock the model selector (cl.ChatSettings) at the input composer.
+
+        Renders a Select mapping friendly labels → model ids. The user can
+        change it any time mid-conversation; on_settings_update applies it live.
+        Returns the resolved settings dict (Chainlit echoes back the initial
+        values; it does NOT fire on_settings_update for this initial send).
+        """
+        initial = initial if initial in MODEL_LABELS else DEFAULT_MODEL
+        settings = await cl.ChatSettings([
+            Select(
+                id="model",
+                label="Model",
+                items={m["label"]: m["id"] for m in MODEL_CHOICES},
+                initial_value=initial,
+            )
+        ]).send()
+        return settings or {"model": initial}
+
+    @staticmethod
+    async def on_settings_update(settings: dict) -> None:
+        """Apply a mid-conversation model change from the docked selector.
+
+        Hot-swaps the live SDK client's model via set_model() (context is
+        preserved). In the validate path there's no client — we just record
+        the choice so the LLM-judged pass uses it.
+        """
+        model = (settings or {}).get("model") or DEFAULT_MODEL
+        if model not in MODEL_LABELS:
+            model = DEFAULT_MODEL
+        prev = cl.user_session.get("model")
+        cl.user_session.set("model", model)
+        if model == prev:
+            return
+
+        client = cl.user_session.get("client")
+        if client is not None:
+            try:
+                await client.set_model(model)
+            except Exception as e:
+                log.warning("set_model(%s) failed: %s", model, e)
+                await cl.Message(
+                    author="autocodabench",
+                    content=(
+                        f"_Couldn't switch model live (`{type(e).__name__}`); "
+                        f"it'll take effect at the next phase._"
+                    ),
+                ).send()
+                return
+
+        label = MODEL_LABELS.get(model, model)
+        await cl.Message(
+            author="autocodabench",
+            content=f"_Model switched to **{label}** (`{model}`)._",
+        ).send()
+
+    @staticmethod
     async def _send_create_greeting(session_id: str) -> None:
         """Option A greeting. Must contain the READY_PHRASE for the init-gate."""
         await cl.Message(
@@ -293,8 +361,11 @@ class SessionManager:
                 "we go. You can also drop a PDF / markdown design doc and I'll "
                 "fill in the gaps.\n\n"
                 "When the plan is ready I'll show a **▶ Proceed to Phase 2** "
-                "button. The phase bar at the top tracks your progress.\n\n"
-                f"_session `{session_id}` · model `{DEFAULT_MODEL}` · "
+                "button. The phase bar at the top tracks your progress. Change "
+                "the **model** any time from the **⚙️ settings** by the message "
+                "box.\n\n"
+                f"_session `{session_id}` · model "
+                f"`{cl.user_session.get('model') or DEFAULT_MODEL}` · "
                 f"budget ${MAX_USD_PER_SESSION:.2f}_"
             ),
             author="autocodabench",
@@ -313,7 +384,8 @@ class SessionManager:
                 "— and write you a report.\n\n"
                 "_Typing is disabled until the bundle is validated; just attach "
                 "the file and send._\n\n"
-                f"_session `{session_id}`_"
+                f"_session `{session_id}` · LLM-judged checks use model "
+                f"`{cl.user_session.get('model') or DEFAULT_MODEL}`_"
             ),
             author="autocodabench",
         ).send()

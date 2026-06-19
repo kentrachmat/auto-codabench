@@ -162,8 +162,13 @@ class Validate:
             from autocodabench.checks import (
                 validate_bundle_path_async, render_judged_section,
             )
+            from autocodabench.backends import resolve_backend
+            from config import DEFAULT_MODEL
+
+            model   = cl.user_session.get("model") or DEFAULT_MODEL
+            backend = resolve_backend("claude", model=model)
             jreport = await validate_bundle_path_async(
-                bundle_path, execute=False, judged=True,
+                bundle_path, execute=False, judged=True, backend=backend,
             )
         except Exception as e:
             log.warning("[validate] judged pass failed: %s", e)

@@ -480,7 +480,7 @@ async def run_agent_turn(
                     run_dir,
                     turn_cost=cost,
                     cumulative=cum,
-                    model=DEFAULT_MODEL,
+                    model=cl.user_session.get("model") or DEFAULT_MODEL,
                     session_id=cl.user_session.get("session_id") or "",
                     user_id=user.identifier if user else "anon",
                 )

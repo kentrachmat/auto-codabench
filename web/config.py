@@ -27,6 +27,16 @@ DEFAULT_MODEL         = os.environ.get("AUTOCODABENCH_DEFAULT_MODEL", "claude-so
 MAX_USD_PER_SESSION   = float(os.environ.get("MAX_USD_PER_SESSION", "5.0"))
 CONTEXT_WINDOW_TOKENS = int(os.environ.get("AUTOCODABENCH_CONTEXT_WINDOW", "200000"))
 
+# Models the user can pick from in the docked selector. The CLI exposes the
+# full `--backend`/`--model` surface; the web UI offers a curated short list.
+# For now Sonnet 4.6 only — add entries here (e.g. Opus, or OpenAI-compatible
+# backbones already supported by the CLI's --backend) to grow the picker. The
+# first entry is the fallback when DEFAULT_MODEL isn't in the list.
+MODEL_CHOICES = [
+    {"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6"},
+]
+MODEL_LABELS = {m["id"]: m["label"] for m in MODEL_CHOICES}
+
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------

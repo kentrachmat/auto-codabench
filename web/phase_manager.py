@@ -35,11 +35,14 @@ log = logging.getLogger("autocodabench.web.phase_manager")
 # SDK client helpers
 # ---------------------------------------------------------------------------
 
-def _build_sdk_options(run_dir: Path, phase: str, mcp_servers: dict) -> ClaudeAgentOptions:
+def _build_sdk_options(
+    run_dir: Path, phase: str, mcp_servers: dict, model: str | None = None
+) -> ClaudeAgentOptions:
     """Build ClaudeAgentOptions for the given phase.
 
     Each phase gets its own system prompt and tool allowlist. The budget cap
-    is shared across the whole session (not reset per phase).
+    is shared across the whole session (not reset per phase). The model is the
+    one the user picked at session start (falls back to DEFAULT_MODEL).
     """
     from phases.plan import Plan
     from phases.bundle import Bundle
@@ -53,7 +56,7 @@ def _build_sdk_options(run_dir: Path, phase: str, mcp_servers: dict) -> ClaudeAg
     prompt_fn = system_prompts.get(phase, Plan.system_prompt)
 
     return ClaudeAgentOptions(
-        model=DEFAULT_MODEL,
+        model=model or DEFAULT_MODEL,
         system_prompt=prompt_fn(),
         mcp_servers=mcp_servers,
         max_budget_usd=MAX_USD_PER_SESSION,
@@ -72,7 +75,8 @@ async def _switch_sdk_client(run_dir: Path, target: str, mcp_servers: dict) -> N
             await old.disconnect()
         except Exception as e:
             log.warning("disconnect on phase switch failed: %s", e)
-    new_client = ClaudeSDKClient(options=_build_sdk_options(run_dir, target, mcp_servers))
+    model = cl.user_session.get("model") or DEFAULT_MODEL
+    new_client = ClaudeSDKClient(options=_build_sdk_options(run_dir, target, mcp_servers, model))
     await new_client.connect()
     cl.user_session.set("client", new_client)
 
