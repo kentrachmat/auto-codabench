@@ -35,6 +35,10 @@ python scripts/make_demo_fixture.py       # regenerate the shipped replay fixtur
 
 cd web && chainlit run app.py --host 127.0.0.1 --port 8500 -h   # web UI (needs .env)
 
+# Deploy the web UI to the Hugging Face Space (GitHub master is the source of
+# truth; the script injects the HF README header and force-pushes to hf main):
+scripts/deploy_hf.sh [--dry-run] [--yes] [src-ref]   # default src-ref: origin/master
+
 # Benchmarks (pure-SDK; any backbone via --backend; needs Docker + a populated instrument):
 python benchmark/autocodabench_create_bench/run.py --competition style-trans-fair --backend claude
 ```
@@ -66,3 +70,4 @@ Pure-SDK orchestrators — no `claude -p` shell-outs, no ambient `.mcp.json`/`.c
 - The unit suite must stay keyless and fast: live-SDK behavior is verified manually (`autocodabench validate --judged`, `autocodabench auth status --probe`), never in `tests/`.
 - Judged checks emit FINDINGs, never PASS/FAIL gates — "valid" is defined by executable checks only. Preserve the three-status report semantics (FAIL gates; FINDING advises; ATTESTATION_REQUIRED surfaces).
 - Do not add a Claude co-author trailer to commits or PRs.
+- **Deploying to the Hugging Face Space**: when the user asks to "push/deploy to hf main" (or to the Space), ALWAYS run `scripts/deploy_hf.sh` — never hand-merge or force-push to the `hf` remote directly. GitHub `master` is the single source of truth; the Space only ever *receives* `master`. The Space's README needs an HF Spaces YAML config header (`sdk: docker`, `app_port: 7860`, …) that `master`'s README deliberately does not carry, and the script injects it at deploy time inside an isolated worktree, then force-pushes to `hf main`. Use `--dry-run` first to preview the diff vs the live Space.
