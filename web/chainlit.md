@@ -1,56 +1,110 @@
-# AutoCodabench
-
-A scientific-friend assistant for designing and validating **Codabench** competitions.
-
----
-
-## Pick what you want to do (at the start of every chat)
-
-When a chat begins you choose one of two paths. To switch later, start a **New Chat** and choose again.
-
-- **🛠 Create a bundle from scratch** — go through Plan → Build → Validate. Optionally drop a PDF/markdown proposal to seed the plan.
-- **✅ I have a bundle — validate it** — skip straight to validation. The composer locks to *attach-only*: drop your bundle `.zip` and press send.
-
-The **phase bar** at the top shows progress only (● in progress · ✓ done · ⤼ skipped). You move forward with the **▶ Proceed** buttons that appear in chat — clicking a pill just flashes this Readme.
+<div align="center" style="margin:6px 0 2px">
+  <img src="/public/codabench-logo.png" alt="Codabench" style="height:40px" />
+  <div style="color:hsl(var(--muted-foreground));font-size:14px;margin-top:6px">
+    Design &amp; validate Codabench competitions — just by chatting.
+  </div>
+</div>
 
 ---
 
-## Path A — Create a bundle from scratch
+### 🧭 The three phases
 
-**1. 📝 Plan.** Chat with the agent until it converges on a one-page `implementation_plan.md` covering the 7 design sections (task, data, metric, baseline, rules, ethics, schedule). Review it in the **workspace panel** on the right. When ready, click **▶ Proceed to Phase 2**.
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin:8px 0 4px">
+  <div style="flex:1;min-width:150px;padding:14px;border:1px solid hsl(var(--border));border-radius:12px;background:hsl(var(--accent))">
+    <div style="font-size:24px;line-height:1">📝</div>
+    <div style="font-weight:700;margin-top:6px">1 · Plan</div>
+    <div style="font-size:12.5px;color:hsl(var(--muted-foreground));margin-top:3px">Chat an idea into a design plan.</div>
+  </div>
+  <div style="flex:1;min-width:150px;padding:14px;border:1px solid hsl(var(--border));border-radius:12px;background:hsl(var(--accent))">
+    <div style="font-size:24px;line-height:1">📦</div>
+    <div style="font-weight:700;margin-top:6px">2 · Build</div>
+    <div style="font-size:12.5px;color:hsl(var(--muted-foreground));margin-top:3px">Agent writes the bundle &amp; runs it.</div>
+  </div>
+  <div style="flex:1;min-width:150px;padding:14px;border:1px solid hsl(var(--border));border-radius:12px;background:hsl(var(--accent))">
+    <div style="font-size:24px;line-height:1">✅</div>
+    <div style="font-weight:700;margin-top:6px">3 · Validate</div>
+    <div style="font-size:12.5px;color:hsl(var(--muted-foreground));margin-top:3px">Checks + report: ready to launch?</div>
+  </div>
+</div>
 
-**2. 📦 Build.** A fresh agent (no memory of the chat) reads the plan and writes the Codabench bundle — `competition.yaml`, `scoring_program/score.py`, the baseline `solution/`, and the standard pages — then validates and zips it. It also **builds and runs the bundle in Docker** using the `docker_image` from `competition.yaml` (**~5–10 min** for a verified bundle; longer on first run while the image pulls). You get a `bundle.zip` download and an **⬆️ Upload to Codabench** button. Click **▶ Proceed to Phase 3**.
-
-**3. ✅ Validate.** See below — same as Path B, plus a **design scorecard** (Table A) comparing your plan against best practice.
-
----
-
-## Path B — Validate an existing bundle
-
-Attach your bundle `.zip` and press send. AutoCodabench runs the full check framework, **executing the baseline in Docker** (it pulls the `docker_image` if needed), and writes a report.
-
----
-
-## What validation produces
-
-A **✅ PASS / ❌ FAIL** verdict in chat plus two colorful tables, and a downloadable `validation_report.md`:
-
-- **Table A — design scorecard** *(create-path only)*: each of the 7 design sections marked ✅ / ⚠️ / ❌ against best practice.
-- **Table B — checks**: every check with ✅ pass / ❌ fail / ⚠️ finding / 📋 attestation / • skipped.
-  - **Gate failures (❌)** must be fixed before upload (e.g. missing `competition.yaml` keys, broken file refs, a baseline that crashes in Docker).
-  - **Findings (⚠️)** are advisory design risks (with citations) — they don't block upload.
-  - **Attestations (📋)** are criteria only a human can certify.
-
-After the report, you'll be offered an optional **✨ LLM-judged** pass: an LLM reads your participant-facing pages and flags **contradictions** against `competition.yaml` (e.g. a page promises a metric or submission limit the config doesn't declare). It's advisory only and needs Claude auth.
-
-Everything is downloadable from the workspace panel: `implementation_plan.md`, `bundle.zip`, `validation_report.md`, and a combined `workspace.zip`.
+The **phase bar** (top-right) shows where you are — `●` active · `✓` done.
+Hover any phase for a one-line reminder. You move forward with the **▶ Proceed**
+buttons in the chat.
 
 ---
 
-## Internal note — operator checklist
+### 🚀 Two ways to start
 
-(_For the project maintainer / internal testers._) This is a **private alpha**:
+Every new chat opens with a choice (switch later via **New Chat**, top-left):
 
-- Logs are uploaded to a private HF Dataset (`ktgiahieu/autocodabench-runs`).
-- Each session has a hard Anthropic budget cap (default **$5.00**, via `MAX_USD_PER_SESSION`).
-- HF Spaces is CPU-only, ≤16 GB RAM; if Docker isn't available, Phase 2 skips the runtime check and Phase 3's Docker execution checks report as *skipped* rather than failing.
+- **🛠 Create from scratch** — you have an *idea*. Go through all three phases below.
+- **✅ Validate a bundle** — you already have a `.zip`. Jump straight to **Phase 3**;
+  the composer locks to *attach-only* (drop your bundle and send). No bundle? That
+  screen has a **⬇ Download example bundle** button to try.
+
+---
+
+## 📝 Phase 1 · Plan
+
+*Design the competition together — the agent acts as a scientific collaborator.*
+
+- **You provide:** a one-sentence idea — e.g. *“a fair chest-X-ray pneumonia
+  challenge, scored by balanced accuracy.”* You can also **drop a PDF or markdown
+  proposal** and it'll seed the plan.
+- **What happens:** the agent researches related work (OpenAlex / Kaggle), then
+  works through the **7 design sections** with you — *task, data, metric, baseline,
+  rules, ethics, schedule* — asking questions until the design is coherent.
+- **You get:** a one-page **`implementation_plan.md`** in the **workspace panel**
+  on the right. Read it, push back, refine.
+- **Next:** when it looks right, click **▶ Proceed to Phase 2**.
+
+## 📦 Phase 2 · Competition Creation (Build)
+
+*A fresh agent turns the approved plan into a real Codabench bundle.*
+
+- **Input:** **only** the locked `implementation_plan.md` — this agent never sees
+  your chat, which keeps the build honest (no leaked answers).
+- **What happens:** it writes the full bundle — `competition.yaml`, the
+  `scoring_program/`, a **baseline solution**, the ingestion program, participant
+  **pages**, and a **starting kit** — then **builds and runs it in Docker** (using
+  the bundle's `docker_image`) to prove the baseline actually produces a score.
+  Expect **~5–10 min** (longer the first time, while the image downloads).
+- **You get:** a **`bundle.zip`** to download, plus an **⬆️ Upload to Codabench**
+  button.
+- **Next:** click **▶ Proceed to Phase 3**.
+
+## ✅ Phase 3 · Validation
+
+*The pre-launch safety check — would this competition run cleanly?*
+
+- **Input:** the bundle — automatically from Phase 2, or (Validate path) the
+  `.zip` you **attach**.
+- **What happens:** runs the full **check framework** — schema and file-reference
+  checks, plus a real **Docker execution of the baseline** — and, on the create
+  path, a **design scorecard** grading your plan against best practice. You can
+  then run an optional **✨ LLM-judged** pass that flags participant pages
+  contradicting `competition.yaml`.
+- **You get:** a **✅ PASS / ❌ FAIL** verdict, two result tables, and a
+  downloadable **`validation_report.md`**.
+- **Next:** fix any **❌** gate failures and re-validate; **⚠️** findings are
+  advisory.
+
+---
+
+### 📊 How to read the report
+
+| Badge | Meaning |
+|---|---|
+| ❌ **Gate failure** | **Must fix before upload** — bad config, broken file paths, a baseline that crashes in Docker. |
+| ⚠️ **Finding** | Advisory design risk, with a citation. Doesn't block upload. |
+| 📋 **Attestation** | A criterion only a human can certify. |
+| • **Skipped** | Couldn't run here (e.g. no Docker) — not a failure. |
+
+Everything downloads from the **workspace panel**: the plan, `bundle.zip`,
+`validation_report.md`, and a combined `workspace.zip`.
+
+---
+
+<div style="font-size:12px;color:hsl(var(--muted-foreground))">
+⚙ Change the model &amp; theme from <b>settings</b> (top-right) · 💸 each session has a spend cap (default $5) · 🐳 without Docker, baseline-execution checks are skipped, not failed.
+</div>

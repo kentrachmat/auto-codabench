@@ -277,17 +277,21 @@ class SessionManager:
     @staticmethod
     async def _ask_entry_mode() -> str:
         """Ask the user, upfront, which path they want. Returns 'create'|'validate'."""
+        # Labels are intentionally short, clean titles — the per-card
+        # description line + icon are added by CSS (login.css, keyed off the
+        # data-ac-entry tag chat.js sets), so the landing reads like a product
+        # chooser rather than two emoji chat buttons.
         res = await cl.AskActionMessage(
             content=(
-                "### Welcome to AutoCodabench\n\n"
-                "What would you like to do? (Start a **New Chat** any time to "
-                "switch.)"
+                "## AutoCodabench\n\n"
+                "Choose how you'd like to start. You can switch any time "
+                "with **New Chat**."
             ),
             actions=[
                 cl.Action(name="entry_mode", payload={"mode": "create"},
-                          label="🛠 Create a bundle from scratch (PDF optional)"),
+                          label="Create from scratch"),
                 cl.Action(name="entry_mode", payload={"mode": "validate"},
-                          label="✅ I have a bundle — validate it"),
+                          label="Validate a bundle"),
             ],
             timeout=900,
         ).send()
@@ -351,22 +355,54 @@ class SessionManager:
         ).send()
 
     @staticmethod
+    def _meta_footer(pairs: list[tuple[str, str]]) -> str:
+        """A clean metadata chip row (session / model / budget …).
+
+        Rendered as inline-styled HTML — config enables unsafe_allow_html, and
+        inline styles (unlike CSS classes) survive Chainlit's HTML sanitiser.
+        Colours use the app's theme variables so it tracks light/dark.
+        """
+        chip = (
+            '<span style="display:inline-flex;align-items:center;gap:6px;'
+            'padding:3px 10px;border-radius:999px;background:hsl(var(--accent))">'
+            '<b style="font-size:10px;font-weight:600;text-transform:uppercase;'
+            'letter-spacing:.4px;opacity:.7">{k}</b>'
+            '<code style="font-family:ui-monospace,SFMono-Regular,monospace;'
+            'background:none;color:hsl(var(--foreground))">{v}</code></span>'
+        )
+        chips = "".join(chip.format(k=k, v=v) for k, v in pairs)
+        return (
+            '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;'
+            'padding-top:12px;border-top:1px solid hsl(var(--border));'
+            'font-size:12px">' + chips + "</div>"
+        )
+
+    @staticmethod
     async def _send_create_greeting(session_id: str) -> None:
         """Option A greeting. Must contain the READY_PHRASE for the init-gate."""
+        model = cl.user_session.get("model") or DEFAULT_MODEL
         await cl.Message(
             content=(
-                "# AutoCodabench — create from scratch\n\n"
-                "Tell me a competition idea — a sentence is enough — and I'll "
-                "explore the design space with you, citing the literature as "
-                "we go. You can also drop a PDF / markdown design doc and I'll "
-                "fill in the gaps.\n\n"
-                "When the plan is ready I'll show a **▶ Proceed to Phase 2** "
-                "button. The phase bar at the top tracks your progress. Change "
-                "the **model** any time from the **⚙️ settings** by the message "
-                "box.\n\n"
-                f"_session `{session_id}` · model "
-                f"`{cl.user_session.get('model') or DEFAULT_MODEL}` · "
-                f"budget ${MAX_USD_PER_SESSION:.2f}_"
+                "## Create from scratch\n\n"
+                "Tell me a competition idea — a sentence is enough. I'll explore "
+                "the design space with you, cite the relevant literature, and "
+                "turn it into a plan. You can also drop a PDF or markdown design "
+                "doc and I'll fill in the gaps.\n\n"
+                "**Not sure where to start? Try one of these:**\n"
+                "- *A fair chest-X-ray pneumonia challenge, scored by balanced "
+                "accuracy with a penalty for performance gaps across age groups.*\n"
+                "- *Forecast next-day household energy use from smart-meter "
+                "history, ranked by MASE.*\n"
+                "- *Low-resource Swahili→English machine translation, evaluated "
+                "with chrF.*\n\n"
+                "When the plan is ready, a **▶ Proceed to Phase 2** button "
+                "appears. The bar above tracks your progress; switch models "
+                "anytime from **⚙ settings** by the message box.\n\n"
+                + SessionManager._meta_footer([
+                    ("session", session_id),
+                    ("model", model),
+                    ("budget", f"${MAX_USD_PER_SESSION:.2f}"),
+                ])
             ),
             author="autocodabench",
         ).send()
@@ -374,18 +410,29 @@ class SessionManager:
     @staticmethod
     async def _send_validate_greeting(session_id: str) -> None:
         """Option B greeting. Contains the attach-mode READY_PHRASE."""
+        model = cl.user_session.get("model") or DEFAULT_MODEL
         await cl.Message(
             content=(
-                f"# {PHASE_TITLE[PHASE_VALIDATE]} — validate an existing bundle\n\n"
-                "**Attach your bundle `.zip`** below and press send. I'll run "
-                "the autocodabench check framework against it — including a "
-                "Docker execution of the baseline (this can take several "
-                "minutes, and will pull the bundle's `docker_image` if needed) "
-                "— and write you a report.\n\n"
-                "_Typing is disabled until the bundle is validated; just attach "
-                "the file and send._\n\n"
-                f"_session `{session_id}` · LLM-judged checks use model "
-                f"`{cl.user_session.get('model') or DEFAULT_MODEL}`_"
+                "## Validate a bundle\n\n"
+                "**Attach your bundle `.zip`** below and press send. I'll run the "
+                "autocodabench checks against it — including a Docker execution "
+                "of the baseline (this can take a few minutes and may pull the "
+                "bundle's `docker_image`) — then write you a report.\n\n"
+                "_Typing stays disabled until validation runs — just attach the "
+                "file and send._\n\n"
+                "**Don't have a bundle handy?** Download this small example "
+                "competition, then attach it above to see validation in action:\n\n"
+                '<a href="/public/examples/example-bundle-survival.zip" download '
+                'target="_blank" style="display:inline-flex;align-items:center;'
+                'gap:8px;padding:9px 16px;border-radius:10px;'
+                'background:hsl(var(--primary));color:#fff;font-weight:600;'
+                'font-size:13px;text-decoration:none">&#11015; Download example '
+                'bundle <span style="opacity:.75;font-weight:400">survival '
+                '&middot; 80&nbsp;KB</span></a>\n\n'
+                + SessionManager._meta_footer([
+                    ("session", session_id),
+                    ("judge model", model),
+                ])
             ),
             author="autocodabench",
         ).send()

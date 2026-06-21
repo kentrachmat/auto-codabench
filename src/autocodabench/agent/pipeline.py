@@ -136,6 +136,26 @@ def _find_bundle(run_dir: Path) -> tuple[Path | None, Path | None]:
     return None, None
 
 
+def _resolve_plan_file(run_path: Path) -> Path | None:
+    """Return the saved implementation plan, or None if the agent never wrote it.
+
+    Defense-in-depth for the class of bug behind #32: the plan agent is told to
+    save `specs/implementation_plan.md`, but `snapshot_spec` writes the filename
+    verbatim, so an agent that drops the extension lands at
+    `specs/implementation_plan`. Phase 2 reads `implementation_plan.md`, so if we
+    find only the extension-less file we promote it to the canonical name.
+    """
+    specs = run_path / "specs"
+    canonical = specs / "implementation_plan.md"
+    if canonical.is_file():
+        return canonical
+    extensionless = specs / "implementation_plan"
+    if extensionless.is_file():
+        extensionless.rename(canonical)
+        return canonical
+    return None
+
+
 def _update_run_slug(run_dir: Path, slug: str) -> None:
     """Overwrite the slug field in an existing run's meta.json.
 
@@ -272,11 +292,11 @@ async def create_async(
     emit({"kind": "phase_done", "phase": "plan", "ok": plan_result.ok,
           "num_turns": plan_result.num_turns,
           "cost_usd": plan_result.total_cost_usd})
-    plan_path = p1.path / "specs" / "implementation_plan.md"
+    plan_path = _resolve_plan_file(p1.path)
     record_session_phase(run_dir, "phase1_plan", {
-        "dir": str(p1.path), "ok": bool(plan_result.ok and plan_path.is_file()),
+        "dir": str(p1.path), "ok": bool(plan_result.ok and plan_path is not None),
         "cost_usd": plan_result.total_cost_usd, "num_turns": plan_result.num_turns})
-    if not plan_result.ok or not plan_path.is_file():
+    if not plan_result.ok or plan_path is None:
         return CreateResult(
             ok=False, run_dir=run_dir, plan_dir=p1.path,
             plan=plan_result,
@@ -442,8 +462,8 @@ async def plan_async(
         allow_web_tools=research_resolved.web_search,
     ))
 
-    plan_path = run_dir / "specs" / "implementation_plan.md"
-    if not plan_result.ok or not plan_path.is_file():
+    plan_path = _resolve_plan_file(run_dir)
+    if not plan_result.ok or plan_path is None:
         return PlanResult(
             ok=False, run_dir=run_dir,
             plan=plan_result,

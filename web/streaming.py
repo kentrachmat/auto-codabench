@@ -236,20 +236,47 @@ class TurnView:
         extra = f" · {self._status}" if self._status else ""
         return f"_Composing… {_blob(self._frame)} · {elapsed}s{extra}_"
 
+    def _flush_log_run(self, run: list[str]) -> str:
+        """Render a run of tool/step log lines.
+
+        While the turn is WORKING the steps stream live as plain lines. Once the
+        turn is done they collapse into a single hide/unhide ``<details>`` so the
+        final answer is what stands out — the user can expand to see every step.
+        (Inline styles, not classes, so they survive Chainlit's HTML sanitiser.)
+        """
+        if not run:
+            return ""
+        if self._working:
+            return "  \n".join(run)
+        n = len(run)
+        inner = "<br>".join(run)
+        return (
+            '<details style="margin:2px 0"><summary style="cursor:pointer;'
+            'color:hsl(var(--muted-foreground));font-size:13px;'
+            'user-select:none">🔧 '
+            f'{n} step{"s" if n != 1 else ""} · show / hide</summary>'
+            '<div style="font-family:ui-monospace,SFMono-Regular,monospace;'
+            'font-size:12px;color:hsl(var(--muted-foreground));'
+            f'margin:6px 0 4px;line-height:1.7">{inner}</div></details>'
+        )
+
     def _content(self) -> str:
-        # Consecutive log lines pack into one tight block (markdown hard breaks);
-        # narration/footer blocks stand alone so prose and tables render right.
+        # Consecutive log lines pack into one tight block (markdown hard breaks
+        # while live; a collapsed <details> once done); narration/footer blocks
+        # stand alone so prose and tables render right.
         blocks: list[str] = []
         run: list[str] = []
         for it in self._items:
             if it["kind"] == "log":
                 run.append(it["text"])
             else:
-                if run:
-                    blocks.append("  \n".join(run)); run = []
+                block = self._flush_log_run(run); run = []
+                if block:
+                    blocks.append(block)
                 blocks.append(it["text"])
-        if run:
-            blocks.append("  \n".join(run))
+        block = self._flush_log_run(run)
+        if block:
+            blocks.append(block)
         tail = self._tail()
         if tail:
             blocks.append(tail)
@@ -455,25 +482,34 @@ async def run_agent_turn(
                 cl.user_session.set("cum_cost_usd", cum)
 
                 usage = getattr(message, "usage", None) or {}
-                if isinstance(usage, dict):
-                    in_tok  = int(usage.get("input_tokens")  or 0)
-                    out_tok = int(usage.get("output_tokens") or 0)
-                else:
-                    in_tok  = int(getattr(usage, "input_tokens",  0) or 0)
-                    out_tok = int(getattr(usage, "output_tokens", 0) or 0)
+
+                def _u(key: str) -> int:
+                    v = usage.get(key) if isinstance(usage, dict) else getattr(usage, key, 0)
+                    return int(v or 0)
+
+                # The context gauge needs the FULL prompt size. With prompt
+                # caching, `input_tokens` alone is just the handful of uncached
+                # tokens (e.g. 12), so it read ~0% even on a long conversation —
+                # add the cached portion (read + creation) back in.
+                in_tok  = (_u("input_tokens")
+                           + _u("cache_read_input_tokens")
+                           + _u("cache_creation_input_tokens"))
+                out_tok = _u("output_tokens")
                 log.info("[turn] ResultMessage cost=$%.4f cum=$%.4f in_tok=%d out_tok=%d", cost, cum, in_tok, out_tok)
                 if in_tok:
                     cl.user_session.set("last_input_tokens", in_tok)
                 if out_tok:
                     cl.user_session.set("last_output_tokens", out_tok)
 
+                # Refresh phase_state.json so the always-visible cost/context
+                # widget (chat.js, fed by the phase_state poll) shows live
+                # numbers. The per-turn line is no longer printed inline.
                 if cost or in_tok:
-                    ctx_pct = 100.0 * in_tok / CONTEXT_WINDOW_TOKENS if in_tok else 0.0
-                    await view.add_block(
-                        f"_turn ≈ ${cost:.3f} · session "
-                        f"${cum:.2f} / ${MAX_USD_PER_SESSION:.2f} · "
-                        f"ctx {ctx_pct:.1f}% ({in_tok:,} tok)_"
-                    )
+                    try:
+                        from phase_manager import PhaseManager
+                        PhaseManager.write_state(run_dir)
+                    except Exception:
+                        log.debug("[turn] phase_state cost refresh failed", exc_info=True)
 
                 user = cl.user_session.get("user")
                 CostLog.append(

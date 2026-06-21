@@ -60,16 +60,18 @@ form:has(input[type="password"]):not(.ac-pub-form) > *:has(> button[type="submit
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    padding: 14px 20px;
-    background: linear-gradient(90deg, #2563eb 0%, #7c3aed 100%);
-    color: #fff;
+    gap: 10px;
+    padding: 11px 20px;
+    /* Theme-adaptive, neutral — no purple gradient. Reads as a quiet system
+     * notification that matches the rest of the UI in light and dark. */
+    background: hsl(var(--popover));
+    color: hsl(var(--muted-foreground));
+    border-bottom: 1px solid hsl(var(--border));
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
                  Roboto, Helvetica, Arial, sans-serif;
-    font-size: 14px;
+    font-size: 13.5px;
     line-height: 1.4;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
-    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
     /* Slide-down on first appearance so it doesn't feel jarring. */
     animation: ac-banner-in 0.25s ease-out;
 }
@@ -78,14 +80,15 @@ form:has(input[type="password"]):not(.ac-pub-form) > *:has(> button[type="submit
 }
 #ac-init-banner b {
     font-weight: 600;
+    color: hsl(var(--foreground));
 }
 
 .ac-init-spinner {
     flex: 0 0 auto;
-    width: 16px;
-    height: 16px;
-    border: 2px solid rgba(255, 255, 255, 0.35);
-    border-top-color: #fff;
+    width: 15px;
+    height: 15px;
+    border: 2px solid hsl(var(--border));
+    border-top-color: hsl(var(--primary));
     border-radius: 50%;
     animation: ac-spin 0.9s linear infinite;
 }
@@ -103,97 +106,6 @@ textarea.ac-input-locked {
 }
 textarea.ac-input-locked::placeholder {
     font-style: italic;
-}
-
-
-/* ============================================================
- * Phase-switch action buttons.
- *
- * We can't target our cl.Action buttons by a stable class (Chainlit
- * doesn't expose one), so we match by visible label text — the strings
- * are fixed server-side in app.py's _on_switch_to_impl / etc. handlers.
- * `:has()` is supported in every evergreen browser as of 2023.
- *
- * Three buttons styled:
- *   - "START IMPLEMENTATION (irreversible)"  — big, orange/red, pulses.
- *   - "YES — switch to IMPLEMENTATION"        — large, red, no pulse.
- *   - "Cancel — keep planning"                — large, calm grey.
- * ============================================================ */
-
-button:has(span:is(:contains)),
-button[aria-label*="START IMPLEMENTATION" i],
-button:has(*:not(script):not(style)) {
-    /* The :has(:contains) selector isn't standard, so we fall through
-       and rely on the `text starts with` JS tagger in chat.js — see
-       below. The selector above is a no-op safety net for browsers
-       that try to parse it; the real styling targets data attributes. */
-}
-
-/* Tagged by chat.js: a Chainlit action button whose label starts with
- * "🛠 START IMPLEMENTATION". Pulsing border to drag the eye. */
-button[data-ac-impl-button="primary"] {
-    display: inline-flex !important;
-    align-items: center;
-    justify-content: center;
-    min-height: 56px;
-    padding: 14px 28px !important;
-    margin: 12px 0 !important;
-    font-size: 17px !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.3px;
-    color: #fff !important;
-    background: linear-gradient(90deg, #d97706 0%, #dc2626 100%) !important;
-    border: 2px solid #fff !important;
-    border-radius: 10px !important;
-    box-shadow:
-        0 0 0 0 rgba(220, 38, 38, 0.6),
-        0 4px 18px rgba(220, 38, 38, 0.35) !important;
-    cursor: pointer !important;
-    animation: ac-pulse-cta 1.6s ease-in-out infinite;
-}
-button[data-ac-impl-button="primary"]:hover {
-    filter: brightness(1.05);
-    transform: translateY(-1px);
-}
-@keyframes ac-pulse-cta {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.6),
-                          0 4px 18px rgba(220, 38, 38, 0.35); }
-    50%      { box-shadow: 0 0 0 12px rgba(220, 38, 38, 0.0),
-                          0 6px 22px rgba(220, 38, 38, 0.45); }
-}
-
-/* The final-confirm "YES" button — same loud styling, no pulse (user
- * has already seen the pulse; we want them deliberate now). */
-button[data-ac-impl-button="confirm"] {
-    display: inline-flex !important;
-    align-items: center;
-    justify-content: center;
-    min-height: 52px;
-    padding: 12px 26px !important;
-    margin: 10px 8px 10px 0 !important;
-    font-size: 16px !important;
-    font-weight: 700 !important;
-    color: #fff !important;
-    background: #dc2626 !important;
-    border: 2px solid #991b1b !important;
-    border-radius: 8px !important;
-    box-shadow: 0 4px 14px rgba(220, 38, 38, 0.30) !important;
-    cursor: pointer !important;
-}
-button[data-ac-impl-button="cancel"] {
-    display: inline-flex !important;
-    align-items: center;
-    justify-content: center;
-    min-height: 52px;
-    padding: 12px 22px !important;
-    margin: 10px 0 !important;
-    font-size: 15px !important;
-    font-weight: 600 !important;
-    color: CanvasText !important;
-    background: rgba(127, 127, 127, 0.10) !important;
-    border: 2px solid rgba(127, 127, 127, 0.35) !important;
-    border-radius: 8px !important;
-    cursor: pointer !important;
 }
 
 
@@ -336,28 +248,6 @@ textarea.ac-attach-only {
 }
 
 
-/* Hide the cl.Action buttons we use only as click targets for the
- * phase pills. Labels like "AC_ADVANCE::kit" / "AC_REVERT::plan"
- * are tagged in chat.js as data-ac-phase-nav="advance|revert" and
- * hidden here — and so is their host message card via :has(). */
-button[data-ac-phase-nav] {
-    position: absolute !important;
-    width: 1px !important;
-    height: 1px !important;
-    padding: 0 !important;
-    margin: -1px !important;
-    overflow: hidden !important;
-    clip: rect(0, 0, 0, 0) !important;
-    border: 0 !important;
-    opacity: 0 !important;
-    pointer-events: auto !important; /* still clickable from JS */
-}
-*:has(> button[data-ac-phase-nav]),
-[class*="message"]:has(button[data-ac-phase-nav]) {
-    display: none !important;
-}
-
-
 /* ============================================================
  * Persistent right workspace panel (sci-space style).
  *
@@ -374,7 +264,9 @@ button[data-ac-phase-nav] {
  * just offscreen, and might intercept clicks" failure mode. */
 #ac-side-panel {
     position: fixed !important;
-    top: 0 !important;
+    /* Start BELOW the header so the workspace panel/sliver never overlaps the
+     * phase bar (it used to cover the right edge and cut off "3. Validation"). */
+    top: 56px !important;
     right: 0 !important;
     bottom: 0 !important;
     /* 55vw clamped to [480, 900] px so the notebook has real reading
@@ -440,26 +332,30 @@ button[data-ac-phase-nav] {
     flex: 1 !important;
     width: 44px !important;
     height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    /* Theme tokens (not system Canvas) so the strip matches the app in dark
+     * mode instead of showing as a jarring light bar; centered label. */
     border: none !important;
+    border-left: 1px solid hsl(var(--border)) !important;
     border-radius: 0 !important;
-    background: linear-gradient(180deg,
-        color-mix(in oklab, Canvas 88%, currentColor 6%) 0%,
-        color-mix(in oklab, Canvas 82%, currentColor 10%) 100%) !important;
-    color: CanvasText !important;
+    background: hsl(var(--popover)) !important;
+    color: hsl(var(--muted-foreground)) !important;
     cursor: pointer !important;
-    font-size: 12.5px !important;
+    font-size: 12px !important;
     font-weight: 700 !important;
     letter-spacing: 0.6px !important;
     writing-mode: vertical-rl !important;
     text-orientation: mixed !important;
     padding: 16px 0 !important;
     line-height: 1.3 !important;
+    transition: background 0.12s ease-out, color 0.12s ease-out !important;
 }
 #ac-side-panel[data-state="collapsed"]:hover #ac-side-collapse,
 #ac-side-panel.ac-collapsed:hover #ac-side-collapse {
-    background: linear-gradient(180deg,
-        color-mix(in oklab, Canvas 78%, currentColor 12%) 0%,
-        color-mix(in oklab, Canvas 70%, currentColor 16%) 100%) !important;
+    background: hsl(var(--accent)) !important;
+    color: hsl(var(--foreground)) !important;
 }
 
 .ac-side-header {
@@ -668,4 +564,376 @@ body.ac-side-active {
         border-top: 1px solid color-mix(in oklab, currentColor 18%, transparent);
         border-left: none;
     }
+}
+
+
+/* ============================================================
+ * Top-right Settings menu (injected by chat.js).
+ *
+ * Consolidates Chainlit's two separate native header controls — the
+ * standalone theme toggle (#theme-toggle) and the avatar/user menu
+ * (#user-nav-button, which held Settings + Logout) — into a single
+ * gear dropdown holding the Light/Dark/System theme switch + Logout.
+ * The natives are hidden in favour of this one menu. Colors use
+ * Chainlit's own shadcn CSS variables so the menu tracks the active
+ * theme automatically in both light and dark.
+ * ============================================================ */
+
+/* Fold the native controls into our single gear menu. The theme toggle and
+ * user/avatar menu are redundant; Readme moves INTO the gear menu but stays
+ * in the DOM (display:none) so it remains the click target + layout anchor. */
+#theme-toggle,
+#user-nav-button,
+#readme-button { display: none !important; }
+
+/* Gear button — injected into the header flow just LEFT of "Readme"
+ * (chat.js). That keeps it clear of both the workspace sliver on the far
+ * right and Readme itself, and it inherits the header's vertical alignment.
+ * Matches Chainlit's 36px icon-button chrome. */
+#ac-settings-btn {
+    /* relative + z-index so the gear always renders ABOVE the fixed workspace
+     * sliver (z 10000) even if layout pushes it near the right edge. */
+    position: relative;
+    z-index: 10001;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    margin: 0 6px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: hsl(var(--muted-foreground));
+    cursor: pointer;
+    transition: background 0.12s ease-out, color 0.12s ease-out;
+}
+#ac-settings-btn:hover,
+#ac-settings-btn[aria-expanded="true"] {
+    background: hsl(var(--accent));
+    color: hsl(var(--foreground));
+}
+#ac-settings-btn svg { width: 18px; height: 18px; }
+
+/* Dropdown card (mounted on <body>, fixed-positioned under the gear). */
+#ac-settings-menu {
+    position: fixed;
+    z-index: 100000;
+    min-width: 248px;
+    padding: 8px;
+    border-radius: 12px;
+    background: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 Roboto, Helvetica, Arial, sans-serif;
+    animation: ac-menu-in 0.12s ease-out;
+}
+#ac-settings-menu[hidden] { display: none; }
+@keyframes ac-menu-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Signed-in-as header. */
+.ac-set-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px 10px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid hsl(var(--border));
+}
+.ac-set-avatar {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: hsl(var(--primary));
+    color: #fff;
+    font-weight: 700;
+    font-size: 13px;
+}
+.ac-set-user-meta { display: flex; flex-direction: column; min-width: 0; }
+.ac-set-user-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: hsl(var(--popover-foreground));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ac-set-user-sub { font-size: 11px; color: hsl(var(--muted-foreground)); }
+
+.ac-set-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: hsl(var(--muted-foreground));
+    padding: 2px 8px 6px;
+}
+
+/* Segmented Light / Dark / System control. */
+.ac-theme-seg {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    padding: 3px;
+    margin: 0 4px 6px;
+    background: hsl(var(--accent));
+    border-radius: 9px;
+}
+.ac-theme-opt {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 4px;
+    border: none;
+    background: transparent;
+    border-radius: 7px;
+    cursor: pointer;
+    color: hsl(var(--muted-foreground));
+    font-size: 11px;
+    font-weight: 600;
+    transition: background 0.1s ease-out, color 0.1s ease-out;
+}
+.ac-theme-opt svg { width: 16px; height: 16px; }
+.ac-theme-opt:hover { color: hsl(var(--foreground)); }
+.ac-theme-opt.ac-active {
+    background: hsl(var(--popover));
+    color: hsl(var(--foreground));
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.20);
+}
+
+.ac-set-sep { height: 1px; background: hsl(var(--border)); margin: 6px 4px; }
+
+/* Action rows (Logout). */
+.ac-set-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: calc(100% - 8px);
+    margin: 0 4px;
+    padding: 9px 10px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    color: hsl(var(--popover-foreground));
+    font-size: 13px;
+    font-weight: 500;
+}
+.ac-set-row svg { flex: 0 0 auto; width: 16px; height: 16px; }
+.ac-set-row:hover { background: hsl(var(--accent)); }
+.ac-set-row.ac-set-danger { color: hsl(var(--destructive)); }
+.ac-set-row.ac-set-danger:hover {
+    background: color-mix(in oklab, hsl(var(--destructive)) 14%, transparent);
+}
+
+
+/* ============================================================
+ * Landing chooser cards (chat.js tags the two entry buttons
+ * data-ac-entry="create|validate"). The cl.Action label is the
+ * card title; the icon (::before) + description (::after) are
+ * added here so the first screen reads like a product chooser
+ * rather than two emoji chat buttons.
+ * ============================================================ */
+
+/* Lay the two cards out side by side, centered. Chainlit wraps the
+ * AskActionMessage buttons in a flex container — promote whichever
+ * element directly holds them to a centered, wrapping row. */
+div:has(> button[data-ac-entry]),
+div:has(> * > button[data-ac-entry]) {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: center;
+    align-items: stretch;
+    margin: 10px 0 6px;
+}
+
+button[data-ac-entry] {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    gap: 10px !important;
+    width: 300px !important;
+    max-width: 44vw !important;
+    min-height: 158px !important;
+    padding: 22px 22px 20px !important;
+    border-radius: 16px !important;
+    border: 1px solid hsl(var(--border)) !important;
+    background: hsl(var(--popover)) !important;
+    color: hsl(var(--foreground)) !important;
+    font-size: 17px !important;
+    font-weight: 700 !important;
+    line-height: 1.25 !important;
+    text-align: left !important;
+    white-space: normal !important;
+    cursor: pointer !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06) !important;
+    transition: transform 0.13s ease-out, box-shadow 0.13s ease-out,
+                border-color 0.13s ease-out !important;
+}
+button[data-ac-entry]:hover {
+    transform: translateY(-2px) !important;
+    border-color: hsl(var(--primary)) !important;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16) !important;
+}
+
+/* Icon chip at the top of each card (monochrome, product-style). */
+button[data-ac-entry]::before {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 11px;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+    color: hsl(var(--primary));
+    background: color-mix(in oklab, hsl(var(--primary)) 14%, transparent);
+}
+button[data-ac-entry="create"]::before { content: "+"; }
+button[data-ac-entry="validate"]::before { content: "\2713"; }  /* ✓ */
+
+/* Description line under the title. */
+button[data-ac-entry]::after {
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.45;
+    color: hsl(var(--muted-foreground));
+    white-space: normal;
+}
+button[data-ac-entry="create"]::after {
+    content: "Design a new competition bundle from a one-line idea or a PDF proposal.";
+}
+button[data-ac-entry="validate"]::after {
+    content: "Check an existing bundle against the pre-launch validation criteria.";
+}
+
+
+/* ============================================================
+ * Codabench rebrand — blue accents + light-blue tints to match
+ * codabench.org (brand blue #06649e, link #4183c4, tint #f2faff).
+ * Overrides Chainlit's shadcn theme variables. login.css loads after
+ * Chainlit's bundle, so these win in both light and dark.
+ * ============================================================ */
+/* `:root:not(.dark)` (light) and `html.dark` are deliberately MORE specific
+ * than Chainlit's own `:root` / `.dark` so these win the cascade tie. */
+:root:not(.dark) {
+    --primary: 203 88% 34%;          /* Codabench blue */
+    --primary-foreground: 0 0% 100%;
+    --ring: 203 88% 34%;
+    --accent: 205 80% 93%;           /* light-blue tint */
+    --accent-foreground: 203 80% 26%;
+    --secondary: 205 70% 95%;
+    --secondary-foreground: 203 70% 26%;
+    --background: 208 45% 98.5%;     /* faint light-blue page tint */
+}
+html.dark {
+    --primary: 203 85% 56%;          /* brighter blue on dark */
+    --primary-foreground: 0 0% 100%;
+    --ring: 203 85% 56%;
+    --accent: 203 42% 22%;           /* deep blue-tinted accent */
+    --accent-foreground: 0 0% 96%;
+    --secondary: 203 28% 20%;
+    --secondary-foreground: 0 0% 96%;
+}
+
+
+/* ============================================================
+ * Persistent cost / context widget (chat.js) — bottom-left,
+ * always-visible session spend + context use with a budget bar.
+ * ============================================================ */
+#ac-cost-widget {
+    position: fixed;
+    left: 14px;
+    bottom: 14px;
+    z-index: 9000;
+    min-width: 152px;
+    padding: 8px 11px;
+    border-radius: 10px;
+    background: hsl(var(--popover));
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 Roboto, Helvetica, Arial, sans-serif;
+    font-size: 12px;
+    color: hsl(var(--foreground));
+    user-select: none;
+    pointer-events: none;          /* informational; never blocks clicks */
+}
+.ac-cost-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.ac-cost-budget { font-weight: 600; white-space: nowrap; }
+.ac-cost-bar {
+    flex: 1;
+    height: 5px;
+    min-width: 36px;
+    border-radius: 999px;
+    background: hsl(var(--accent));
+    overflow: hidden;
+}
+.ac-cost-bar > i {
+    display: block;
+    height: 100%;
+    width: 0%;
+    background: hsl(var(--primary));
+    transition: width 0.4s ease-out, background 0.3s ease-out;
+}
+.ac-cost-ctx {
+    margin-top: 4px;
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+}
+
+
+/* ============================================================
+ * Phase-pill custom tooltip + clickable "advance" pill (chat.js).
+ * ============================================================ */
+#ac-pill-tip {
+    position: fixed;
+    z-index: 100002;
+    max-width: 280px;
+    padding: 8px 11px;
+    border-radius: 8px;
+    background: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 Roboto, Helvetica, Arial, sans-serif;
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-line;          /* render the \n\n in the tip text */
+    pointer-events: none;
+}
+#ac-pill-tip[hidden] { display: none; }
+
+/* The next-phase pill, once it can be entered: blue, pulsing, clickable. */
+.ac-pp-advance {
+    cursor: pointer !important;
+    color: #fff !important;
+    background: hsl(var(--primary)) !important;
+    border-color: hsl(var(--primary)) !important;
+    font-weight: 700 !important;
+    animation: ac-pp-advance-pulse 1.8s ease-in-out infinite;
+}
+.ac-pp-advance:hover { filter: brightness(1.12); }
+@keyframes ac-pp-advance-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.55); }
+    70%      { box-shadow: 0 0 0 6px hsl(var(--primary) / 0); }
 }
