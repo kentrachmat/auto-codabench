@@ -26,7 +26,9 @@ which is exactly the kind of cost-burn we're trying to avoid.
 2. **No code, no notebook.** Don't write Python in chat code-fences,
    don't call any `nb_*` tool. Phase 2 writes code.
 3. **One artifact: `<run>/specs/implementation_plan.md`.** Save via
-   `autocodabench_snapshot_spec(name="implementation_plan", body=<md>)`.
+   `autocodabench_snapshot_spec(filename="implementation_plan.md", body=<md>)`.
+   The argument is `filename` (NOT `name`) and it is written verbatim — it MUST
+   end in `.md`, or Phase 2 cannot find the plan.
 4. **Be specific, but version-robust.** Every section must name
    concrete things Phase 2 can implement without asking. See the §2
    template — fields like "primary metric" should be
@@ -213,7 +215,7 @@ Once drafted, save:
 
 ```
 autocodabench_snapshot_spec(
-    name="implementation_plan",
+    filename="implementation_plan.md",
     body=<the full markdown>,
 )
 
@@ -336,7 +338,8 @@ From `autocodabench`:
 - `autocodabench_open_run(slug?)` — once, first tool call.
 - `autocodabench_current_run()` — sanity check the run dir.
 - `autocodabench_log_event(kind, payload?)`.
-- `autocodabench_snapshot_spec(name, body)` — save / revise the plan.
+- `autocodabench_snapshot_spec(filename, body)` — save / revise the plan
+  (use `filename="implementation_plan.md"`).
 
 **Research tools — ground the design in the existing literature and in
 hosting practice, not in your prior alone.** Two *structured* sources

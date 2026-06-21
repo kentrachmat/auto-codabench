@@ -35,31 +35,40 @@
 
     const INIT_BANNER_HTML = `
       <span class="ac-init-spinner" aria-hidden="true"></span>
-      <span>
-        <b>Initializing AutoCodabench…</b>
-        spinning up MCP tool servers and the literature index — this takes
-        up to 30s on first connect. Chat input is locked until ready.
-      </span>
+      <span><b>Starting up…</b> connecting tools — this takes a few seconds.</span>
     `;
+
+    // Chooser is on screen once the entry cards are tagged (or its heading
+    // text is present). The server runs the MCP probe BEFORE showing the
+    // chooser, so by the time it appears initialization is actually done —
+    // the banner should be gone even though no greeting phrase exists yet.
+    function _chooserShown(bodyText) {
+        return !!document.querySelector("button[data-ac-entry]") ||
+               bodyText.includes("Choose how you'd like to start");
+    }
 
     // ---------------------------------------------------------------
     // (4) Init banner + input lock, applied from the *very first*
     //     paint so the user never sees an unlocked chat.
     //
-    // We gate the lock on `textarea` existing — the login page has no
-    // textarea, so the banner only shows after the user has signed in
-    // and the chat surface is visible.
+    // We gate on `textarea` existing — the login page has no textarea, so the
+    // banner only shows after sign-in.
     //
-    // We unlock as soon as READY_PHRASE appears in the body's text.
+    // Banner: shows ONLY while genuinely initializing — i.e. before EITHER the
+    // chooser appears (MCP probe done) OR a greeting lands. It used to persist
+    // through the whole chooser because it only watched the greeting phrases.
+    // Input lock: stays on until a greeting lands, so on the landing the user
+    // picks via the cards rather than typing.
     // ---------------------------------------------------------------
     function syncInitGate() {
         const onChatPage = !!document.querySelector("textarea");
         const bodyText = document.body.textContent;
-        const isReady = READY_PHRASES.some((p) => bodyText.includes(p));
+        const greetingReady = READY_PHRASES.some((p) => bodyText.includes(p));
+        const initializing = onChatPage && !greetingReady && !_chooserShown(bodyText);
 
         // -- banner --
         let banner = document.getElementById("ac-init-banner");
-        if (onChatPage && !isReady) {
+        if (initializing) {
             if (!banner) {
                 banner = document.createElement("div");
                 banner.id = "ac-init-banner";
@@ -72,7 +81,7 @@
 
         if (!onChatPage) return;  // login page: skip input lock too
 
-        const locked = !isReady;
+        const locked = !greetingReady;
 
         // -- textarea --
         document.querySelectorAll("textarea").forEach((el) => {
@@ -224,6 +233,82 @@
         setTimeout(() => btn.classList.remove("ac-readme-flash"), 3200);
     }
 
+    // ---- phase pill: custom instant tooltip + click-to-advance ----
+    function _acPillTipEl() {
+        let t = document.getElementById("ac-pill-tip");
+        if (!t) {
+            t = document.createElement("div");
+            t.id = "ac-pill-tip";
+            t.hidden = true;
+            document.body.appendChild(t);
+        }
+        return t;
+    }
+    function _acShowPillTip(pill) {
+        const t = _acPillTipEl();
+        t.textContent = pill.dataset.tip || "";
+        t.hidden = false;
+        const r = pill.getBoundingClientRect();
+        const w = t.offsetWidth || 240;
+        let left = r.left + r.width / 2 - w / 2;
+        left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+        t.style.left = `${Math.round(left)}px`;
+        t.style.top = `${Math.round(r.bottom + 8)}px`;
+    }
+    function _acHidePillTip() {
+        const t = document.getElementById("ac-pill-tip");
+        if (t) t.hidden = true;
+    }
+    // Advance by click-simulating the in-chat "▶ Proceed to Phase N" button.
+    function _acAdvanceToPhase(num) {
+        const wanted = `Proceed to Phase ${num}`;
+        for (const b of document.querySelectorAll("button, a")) {
+            if ((b.textContent || "").includes(wanted)) {
+                try { b.scrollIntoView({block: "center"}); } catch (e) {}
+                try { b.click(); } catch (e) {}
+                return;
+            }
+        }
+        _flashReadmeForHelp();  // button not present yet — nudge to the Readme
+    }
+
+    // ---------------------------------------------------------------
+    // Persistent cost / context widget (bottom-left). Fed by the
+    // phase_state.json poll (state.cost + state.context), refreshed by
+    // the server after every turn — so the session spend and context use
+    // are ALWAYS visible instead of buried in a per-turn footer line.
+    // ---------------------------------------------------------------
+    function _renderCostWidget(state) {
+        if (!document.querySelector("textarea")) return;  // login page
+        const cost = state && state.cost;
+        const ctx = state && state.context;
+        if (!cost) return;
+        let w = document.getElementById("ac-cost-widget");
+        if (!w) {
+            w = document.createElement("div");
+            w.id = "ac-cost-widget";
+            w.innerHTML =
+                '<div class="ac-cost-top">' +
+                    '<span class="ac-cost-budget"></span>' +
+                    '<span class="ac-cost-bar"><i></i></span>' +
+                '</div>' +
+                '<div class="ac-cost-ctx"></div>';
+            document.body.appendChild(w);
+        }
+        const usd = cost.cumulative_usd || 0;
+        const budget = cost.budget_usd || 0;
+        const pct = Math.max(0, Math.min(100, cost.pct || 0));
+        const ctxPct = ctx ? (ctx.pct || 0) : 0;
+        w.querySelector(".ac-cost-budget").textContent =
+            `💰 $${usd.toFixed(2)} / $${budget.toFixed(2)}`;
+        const bar = w.querySelector(".ac-cost-bar > i");
+        bar.style.width = pct + "%";
+        bar.style.background = pct > 85 ? "hsl(0 72% 52%)"
+            : pct > 60 ? "hsl(38 92% 50%)" : "hsl(var(--primary))";
+        w.querySelector(".ac-cost-ctx").textContent =
+            `🧠 ${ctxPct.toFixed(1)}% context`;
+    }
+
     async function _refreshPhasePillsFromState() {
         const sid = _currentSessionId();
         if (!sid) return;
@@ -238,6 +323,9 @@
             if (!r.ok) return;
             const state = await r.json();
 
+            // Always-visible cost / context widget.
+            _renderCostWidget(state);
+
             // Cache the input mode for syncInputMode() (attach-only lock).
             window.__acInputMode = state.input_mode || "normal";
 
@@ -246,7 +334,9 @@
             const sig = JSON.stringify({
                 cur:   state.current,
                 mode:  window.__acInputMode,
-                items: (state.phases || []).map((x) => [x.id, x.status]),
+                // include `exists` — the advance pill turns on when the active
+                // phase's artifact appears, so a status-only sig would miss it.
+                items: (state.phases || []).map((x) => [x.id, x.status, x.exists]),
             });
             if (sig === _lastPhasePillsSig) return;
             _lastPhasePillsSig = sig;
@@ -258,21 +348,52 @@
                 skipped: "Skipped (you started later in the pipeline)",
                 pending: "Upcoming",
             };
+            // 1–2 sentence explanation of each phase, shown on hover. Keyed by
+            // phase id (config.py: plan / bundle / validate).
+            const PHASE_DESC = {
+                plan:     "Shape your idea into a one-page competition plan "
+                        + "(task, data, metric, baseline, rules, ethics, schedule).",
+                bundle:   "A fresh agent turns the plan into a full Codabench "
+                        + "bundle and runs the baseline in Docker to prove it works.",
+                validate: "Run the checks plus a Docker baseline execution, then "
+                        + "get a PASS/FAIL report.",
+            };
+            const phases = state.phases || [];
+            // The next phase becomes enterable once the active phase's artifact
+            // exists (e.g. the plan is saved → you can proceed to Phase 2).
+            const activeIdx = phases.findIndex((p) => p.status === "active");
+            const advanceIdx = (activeIdx >= 0 && phases[activeIdx].exists)
+                ? activeIdx + 1 : -1;
+
             pillsHost.innerHTML = "";
-            (state.phases || []).forEach((ph, idx) => {
+            phases.forEach((ph, idx) => {
                 const pill = document.createElement("span");
                 pill.className = "ac-pp ac-pp-" + ph.status;
                 pill.dataset.phaseId     = ph.id;
                 pill.dataset.phaseStatus = ph.status;
-                pill.textContent = `${idx + 1}. ${ph.title}${ICON[ph.status] || ""}`;
-                if (ph.status === "active") {
-                    pill.title = TIP.active;
-                } else {
-                    // Pills are progress-only — you advance via the in-chat
-                    // "Proceed" buttons, not by clicking pills. Clicking one
-                    // flashes the Readme so the user learns how the bar works.
-                    pill.title = (TIP[ph.status] || "") +
-                        " — use the Proceed buttons in chat to move between phases";
+                const isAdvance = idx === advanceIdx;
+                pill.textContent = `${idx + 1}. ${ph.title}`
+                    + (isAdvance ? " ▸" : (ICON[ph.status] || ""));
+                const desc = PHASE_DESC[ph.id] || ph.title;
+
+                // Custom instant tooltip (native `title` is delayed/unreliable).
+                pill.dataset.tip = isAdvance
+                    ? `${desc}\n\n▸ Click to proceed to ${ph.title}.`
+                    : (ph.status === "active"
+                        ? `${desc}\n\n● In progress.`
+                        : `${desc}\n\n${TIP[ph.status] || "Upcoming"}.`);
+                pill.addEventListener("mouseenter", () => _acShowPillTip(pill));
+                pill.addEventListener("mouseleave", _acHidePillTip);
+
+                if (isAdvance) {
+                    // Clickable: proceed to this phase.
+                    pill.classList.add("ac-pp-advance");
+                    pill.addEventListener("click", () => {
+                        _acHidePillTip();
+                        _acAdvanceToPhase(idx + 1);
+                    });
+                } else if (ph.status !== "active") {
+                    // Progress-only — clicking nudges the Readme.
                     pill.classList.add("ac-pp-hint");
                     pill.addEventListener("click", _flashReadmeForHelp);
                 }
@@ -308,7 +429,11 @@
         // stale input_mode (the bug where the validate-mode lock leaks across
         // New Chat, or fails to apply). On change we drop per-session caches.
         const text = document.body.textContent || "";
-        const matches = text.match(/session\s+`?[a-f0-9]{8,16}`?/g);
+        // `\s*` (not `\s+`): the greeting footer renders the id in a chip as
+        // "session" + "<hex>" with no whitespace between the two elements, so
+        // textContent reads "session1dffc8eeffae". Older "session `hex`" prose
+        // still matches too.
+        const matches = text.match(/session\s*`?[a-f0-9]{8,16}`?/g);
         let sid = null;
         if (matches && matches.length) {
             const m = matches[matches.length - 1].match(/([a-f0-9]{8,16})/);
@@ -327,6 +452,9 @@
             _lastDownloadsSig = "";
             for (const k in _lastTagByUrl) delete _lastTagByUrl[k];
             window.__acPendingModeFetch = true;
+            // Reset the cost widget — it re-populates from the new session's
+            // first phase_state poll.
+            document.getElementById("ac-cost-widget")?.remove();
         }
         return window.__acSessionId || null;
     }
@@ -664,6 +792,219 @@
         if (btn.innerHTML !== expected) btn.innerHTML = expected;
     }
 
+    // ---------------------------------------------------------------
+    // (8) Top-right Settings menu.
+    //
+    // Chainlit ships two separate header controls: a standalone theme
+    // toggle (#theme-toggle) and an avatar/user menu (#user-nav-button
+    // → Settings + Logout). We fold both into ONE gear dropdown so the
+    // top-right has a single, tidy settings affordance with:
+    //   - a Light / Dark / System segmented switch, and
+    //   - a Logout row.
+    // The natives are hidden via login.css. Theme is applied by
+    // mirroring Chainlit's own mechanism (toggle `dark` on <html> +
+    // persist localStorage "theme"), verified to stick without a reload.
+    // ---------------------------------------------------------------
+
+    const AC_ICON = {
+        gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+        sun: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></svg>',
+        moon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
+        system: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
+        logout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>',
+        readme: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+    };
+
+    function _acCurrentTheme() {
+        const v = localStorage.getItem("theme");
+        return (v === "light" || v === "dark" || v === "system") ? v : "system";
+    }
+
+    function _acApplyTheme(mode) {
+        localStorage.setItem("theme", mode);
+        const dark = mode === "dark" ||
+            (mode === "system" &&
+             window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+        // Reflect selection in the segmented control.
+        document.querySelectorAll(".ac-theme-opt").forEach((o) => {
+            o.classList.toggle("ac-active", o.dataset.mode === mode);
+        });
+    }
+
+    function _acLogout() {
+        // POST /logout clears the httpOnly auth cookie server-side; then
+        // we bounce to /login (requireLogin forces a fresh sign-in).
+        fetch("/logout", {method: "POST", credentials: "same-origin"})
+            .catch(() => {})
+            .finally(() => { window.location.href = "/login"; });
+    }
+
+    function _acCloseSettingsMenu() {
+        const menu = document.getElementById("ac-settings-menu");
+        const btn = document.getElementById("ac-settings-btn");
+        if (menu) menu.hidden = true;
+        if (btn) btn.setAttribute("aria-expanded", "false");
+    }
+
+    function _acPositionSettingsMenu() {
+        const menu = document.getElementById("ac-settings-menu");
+        const btn = document.getElementById("ac-settings-btn");
+        if (!menu || !btn || menu.hidden) return;
+        const r = btn.getBoundingClientRect();
+        const w = menu.offsetWidth || 248;
+        let left = r.right - w;                 // right-align to the gear
+        left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+        menu.style.top = `${Math.round(r.bottom + 8)}px`;
+        menu.style.left = `${Math.round(left)}px`;
+    }
+
+    function _acFillUserName() {
+        // Best-effort: show who's signed in. Cached after first fetch.
+        if (window.__acUserFetched) return;
+        window.__acUserFetched = true;
+        fetch("/user", {credentials: "same-origin"})
+            .then((r) => (r.ok ? r.json() : null))
+            .then((u) => {
+                if (!u) return;
+                const name = u.display_name || u.identifier || "Signed in";
+                const nameEl = document.querySelector(".ac-set-user-name");
+                const avEl = document.querySelector(".ac-set-avatar");
+                if (nameEl) nameEl.textContent = name;
+                if (avEl) avEl.textContent = (name[0] || "?").toUpperCase();
+            })
+            .catch(() => {});
+    }
+
+    function _ensureSettingsMenu() {
+        if (!document.querySelector("textarea")) return;  // login page
+
+        // (a) the dropdown card — mounted once on <body> so header
+        //     re-renders never blow it away.
+        let menu = document.getElementById("ac-settings-menu");
+        if (!menu) {
+            const cur = _acCurrentTheme();
+            const opt = (mode, icon, label) =>
+                `<button type="button" class="ac-theme-opt${mode === cur ? " ac-active" : ""}" ` +
+                `data-mode="${mode}" title="${label} theme">${icon}<span>${label}</span></button>`;
+            menu = document.createElement("div");
+            menu.id = "ac-settings-menu";
+            menu.hidden = true;
+            menu.innerHTML =
+                `<div class="ac-set-user">` +
+                    `<span class="ac-set-avatar">?</span>` +
+                    `<span class="ac-set-user-meta">` +
+                        `<span class="ac-set-user-name">Signed in</span>` +
+                        `<span class="ac-set-user-sub">AutoCodabench</span>` +
+                    `</span>` +
+                `</div>` +
+                `<div class="ac-set-label">Appearance</div>` +
+                `<div class="ac-theme-seg">` +
+                    opt("light", AC_ICON.sun, "Light") +
+                    opt("dark", AC_ICON.moon, "Dark") +
+                    opt("system", AC_ICON.system, "System") +
+                `</div>` +
+                `<div class="ac-set-sep"></div>` +
+                `<button type="button" class="ac-set-row" id="ac-readme-row">` +
+                    `${AC_ICON.readme}<span>Readme</span></button>` +
+                `<button type="button" class="ac-set-row ac-set-danger" id="ac-logout-row">` +
+                    `${AC_ICON.logout}<span>Log out</span></button>`;
+            document.body.appendChild(menu);
+
+            menu.querySelectorAll(".ac-theme-opt").forEach((o) => {
+                o.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    _acApplyTheme(o.dataset.mode);
+                });
+            });
+            // Readme: delegate to the native (now hidden) Readme button.
+            menu.querySelector("#ac-readme-row").addEventListener("click", (e) => {
+                e.stopPropagation();
+                _acCloseSettingsMenu();
+                const rb = document.getElementById("readme-button");
+                if (rb) rb.click();
+            });
+            menu.querySelector("#ac-logout-row")
+                .addEventListener("click", (e) => { e.stopPropagation(); _acLogout(); });
+            // Keep clicks inside the menu from bubbling to the document
+            // close-handler.
+            menu.addEventListener("click", (e) => e.stopPropagation());
+            _acFillUserName();
+            // Sync the active indicator to the live theme on first build.
+            _acApplyTheme(_acCurrentTheme());
+        }
+
+        // (b) the gear button. Anchor it right AFTER the phase pills when they
+        //     exist — the user always sees the pills, so that's the most
+        //     reliable spot and puts Settings next to the phase bar. On the
+        //     landing (no pills yet) fall back to just before the hidden Readme
+        //     button. Re-placed whenever Chainlit's re-render moves things.
+        const pills  = document.getElementById("ac-phase-pills");
+        const readme = _findReadmeButton();
+        if (pills || (readme && readme.parentElement)) {
+            let btn = document.getElementById("ac-settings-btn");
+            if (!btn) {
+                btn = document.createElement("button");
+                btn.id = "ac-settings-btn";
+                btn.type = "button";
+                btn.setAttribute("aria-label", "Settings");
+                btn.setAttribute("aria-haspopup", "menu");
+                btn.setAttribute("aria-expanded", "false");
+                btn.title = "Settings";
+                btn.innerHTML = AC_ICON.gear;
+                btn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    const m = document.getElementById("ac-settings-menu");
+                    if (!m) return;
+                    const willOpen = m.hidden;
+                    m.hidden = !willOpen;
+                    btn.setAttribute("aria-expanded", String(willOpen));
+                    if (willOpen) { _acFillUserName(); _acPositionSettingsMenu(); }
+                });
+            }
+            if (pills) {
+                // BEFORE the pills (to their left) — keeps the gear clear of
+                // the fixed workspace sliver that hugs the right edge and would
+                // otherwise cover it.
+                if (pills.previousElementSibling !== btn) {
+                    pills.insertAdjacentElement("beforebegin", btn);
+                }
+            } else if (readme.previousElementSibling !== btn) {
+                readme.parentElement.insertBefore(btn, readme);
+            }
+        }
+
+        // One-time global wiring: outside-click + Escape close, reposition.
+        if (!window.__acSettingsWired) {
+            window.__acSettingsWired = true;
+            document.addEventListener("click", () => _acCloseSettingsMenu());
+            document.addEventListener("keydown", (e) => {
+                if (e.key === "Escape") _acCloseSettingsMenu();
+            });
+            window.addEventListener("resize", _acPositionSettingsMenu);
+            window.addEventListener("scroll", _acPositionSettingsMenu, true);
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // (9) Landing chooser cards.
+    //
+    // The two entry options are cl.Action buttons (server: _ask_entry_mode).
+    // We tag each by its (clean, fixed) label so login.css can render them
+    // as big product-style cards with an icon + description, instead of the
+    // default emoji chat buttons. Idempotent; safe to run every tick.
+    // ---------------------------------------------------------------
+    const _AC_ENTRY = {
+        "Create from scratch": "create",
+        "Validate a bundle": "validate",
+    };
+    function _tagEntryCards() {
+        document.querySelectorAll("button").forEach((el) => {
+            const mode = _AC_ENTRY[(el.textContent || "").trim()];
+            if (mode && el.dataset.acEntry !== mode) el.dataset.acEntry = mode;
+        });
+    }
+
     function tick() {
         syncInitGate();   // run first so the lock is up before anything else
         _currentSessionId();  // detect New-Chat session swap early (resets caches)
@@ -676,6 +1017,8 @@
         syncInputMode();  // apply the attach-only / locked composer mode
         _injectSidePanel();      // sci-space-style persistent workspace panel
         _ensurePhasePills();     // header-row phase pills (slim, no chips)
+        _ensureSettingsMenu();   // top-right gear: theme switch + logout
+        _tagEntryCards();        // landing: tag the two entry options as cards
         // syncFilesToggle is now redundant — the persistent panel is
         // the primary file viewer. Keep the function around for the
         // edge case where the panel can't materialise (no session id).

@@ -62,6 +62,40 @@ log = logging.getLogger("autocodabench.web")
 register_upload_route()
 
 
+def _install_no_cache_for_custom_assets() -> None:
+    """Force browsers to always re-fetch the SPA shell + our custom JS/CSS.
+
+    Chainlit serves `/` and `/public/*` with NO Cache-Control header, so
+    browsers heuristically cache `chat.js` / `login.css` and keep running a
+    stale UI across reloads (the recurring "X is gone after refresh"). Marking
+    just those responses `no-store` makes every reload pick up the live files.
+    Added at import time, before uvicorn starts serving.
+    """
+    try:
+        from chainlit.server import app as cl_app
+    except Exception as e:  # pragma: no cover
+        log.warning("Chainlit FastAPI app unavailable; no-cache not installed: %s", e)
+        return
+    if getattr(cl_app, "_ac_no_cache_installed", False):
+        return
+    cl_app._ac_no_cache_installed = True  # type: ignore[attr-defined]
+
+    _NO_CACHE_PATHS = ("/public/chat.js", "/public/login.css")
+
+    @cl_app.middleware("http")
+    async def _ac_no_cache(request, call_next):  # type: ignore[no-untyped-def]
+        response = await call_next(request)
+        path = request.url.path
+        if path == "/" or path in _NO_CACHE_PATHS:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
+
+_install_no_cache_for_custom_assets()
+
+
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
