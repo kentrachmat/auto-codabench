@@ -264,7 +264,9 @@ textarea.ac-attach-only {
  * just offscreen, and might intercept clicks" failure mode. */
 #ac-side-panel {
     position: fixed !important;
-    top: 0 !important;
+    /* Start BELOW the header so the workspace panel/sliver never overlaps the
+     * phase bar (it used to cover the right edge and cut off "3. Validation"). */
+    top: 56px !important;
     right: 0 !important;
     bottom: 0 !important;
     /* 55vw clamped to [480, 900] px so the notebook has real reading

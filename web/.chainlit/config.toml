@@ -135,14 +135,14 @@ cot = "tool_call"
 # NOTE: the ?v= query string is a cache-buster. Chainlit serves no
 # Cache-Control header on /public assets, so browsers can hold a stale
 # copy. Bump the version whenever login.css / chat.js change materially.
-custom_css = "/public/login.css?v=14"
+custom_css = "/public/login.css?v=15"
 
 # Specify additional attributes for a custom CSS file
 # custom_css_attributes = "media=\"print\""
 
 # Specify a JavaScript file that can be used to customize the user interface.
 # The JavaScript file can be served from the public directory.
-custom_js = "/public/chat.js?v=14"
+custom_js = "/public/chat.js?v=15"
 
 # The style of alert boxes. Can be "classic" or "modern".
 alert_style = "classic"
