@@ -42,6 +42,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .cli import style  # stdlib-only leaf; no import cycle
+
 
 AUTH_MODES = ("auto", "subscription", "api_key")
 
@@ -493,7 +495,7 @@ def ensure_live_auth(interactive: bool | None = None) -> AuthStatus:
     if status.effective != "none":
         for w in status.warnings:
             print(f"  ⚠ {w}", file=sys.stderr)
-        print(status.info_line(), file=sys.stderr)
+        print(style.info(status.info_line(), stream=sys.stderr), file=sys.stderr)
         return status
 
     if interactive is None:
@@ -521,7 +523,7 @@ def ensure_live_auth(interactive: bool | None = None) -> AuthStatus:
                 status = apply_auth_preference()
                 print("Subscription login detected — saved preference "
                       "'subscription'.", file=sys.stderr)
-                print(status.info_line(), file=sys.stderr)
+                print(style.info(status.info_line(), stream=sys.stderr), file=sys.stderr)
                 return status
             print("\nStill no login detected. Try again, or choose [2] to use "
                   "an API key.\n", file=sys.stderr)
@@ -531,7 +533,7 @@ def ensure_live_auth(interactive: bool | None = None) -> AuthStatus:
                 continue
             set_auth_preference("api_key")
             status = apply_auth_preference()
-            print(status.info_line(), file=sys.stderr)
+            print(style.info(status.info_line(), stream=sys.stderr), file=sys.stderr)
             return status
 
 

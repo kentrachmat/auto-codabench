@@ -14,6 +14,7 @@ Checks are presented user-first: the internal check id is never shown; an
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import textwrap
@@ -35,6 +36,28 @@ ASSESS_EMOJI = {"ok": "✅", "warn": "❓", "missing": "❌"}
 
 _BOOK_LABEL = "AI Competitions & Benchmarks (Pavão et al.)"
 _DOCS_LABEL = "Codabench documentation"
+
+# Terminal color for the report headings/verdict. Self-contained so this
+# presentation layer keeps no CLI dependency; honors NO_COLOR / TERM=dumb /
+# non-TTY exactly like ``cli/style.py``. Colors only outside-the-table text so
+# box-table alignment is never affected.
+_ANSI = {"orange": "\033[38;5;208m", "green": "\033[32m", "red": "\033[31m",
+         "bold": "\033[1m", "reset": "\033[0m"}
+
+
+def _color_on() -> bool:
+    if os.environ.get("NO_COLOR") or os.environ.get("TERM") == "dumb":
+        return False
+    try:
+        return bool(sys.stdout.isatty())
+    except Exception:
+        return False
+
+
+def _paint(text: str, *names: str) -> str:
+    if not names or not _color_on():
+        return text
+    return "".join(_ANSI[n] for n in names) + text + _ANSI["reset"]
 
 
 def _yesno(flag: bool) -> str:
@@ -387,7 +410,8 @@ def render_report_terminal(report: ValidationReport, *,
                            design_assessment: dict | None = None) -> str:
     """Terminal rendering: verdict + gate failures + a box table per type."""
     width = _term_width()
-    verdict = "✅ PASS" if report.ok else "❌ FAIL"
+    verdict = (_paint("✅ PASS", "green", "bold") if report.ok
+               else _paint("❌ FAIL", "red", "bold"))
     out = [
         f"Bundle validation — {verdict}",
         f"Bundle: {report.bundle_dir}",
@@ -396,13 +420,13 @@ def render_report_terminal(report: ValidationReport, *,
     ]
     fails = report.by_status(Status.FAIL)
     if fails:
-        out.append("Gate failures (fix before upload):")
+        out.append(_paint("Gate failures (fix before upload):", "red", "bold"))
         for r in fails:
             out.append(f"  ❌ {_check_title(r.check_id)} — {' '.join((r.message or '').split())}")
         out.append("")
 
     if design_assessment:
-        out.append("[Design assessment (Phase 1)]")
+        out.append(_paint("[Design assessment (Phase 1)]", "orange", "bold"))
         rows = [[ASSESS_EMOJI.get(str(s.get("status")).lower(), "•"),
                  _cell(s.get("name")), _cell(s.get("note"))]
                 for s in design_assessment.get("sections", [])]
@@ -411,7 +435,7 @@ def render_report_terminal(report: ValidationReport, *,
 
     cites: set[tuple[str, str]] = set()
     for type_label, items in _report_groups(report):
-        out.append(f"[{type_label}]")
+        out.append(_paint(f"[{type_label}]", "orange", "bold"))
         rows = []
         for r, title, llm in items:
             detail = _detail_text(r)

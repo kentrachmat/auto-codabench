@@ -32,6 +32,7 @@ import sys
 import textwrap
 from pathlib import Path
 
+from . import style
 from .. import __version__
 
 # Where the human-readable prerequisites (Docker, Node/npx, git + install steps)
@@ -47,8 +48,8 @@ def _require_live_claude_auth(backend_spec: str | None) -> bool:
     mid-run. Non-Claude backends (ollama:/openai:/URL) carry their own
     credentials and are skipped."""
     if backend_spec and backend_spec.split(":", 1)[0] != "claude":
-        print(f"INFO: backend = {backend_spec} (non-Claude; uses its own "
-              "credentials / runs locally)", file=sys.stderr)
+        print(style.info(f"INFO: backend = {backend_spec} (non-Claude; uses its own "
+              "credentials / runs locally)", stream=sys.stderr), file=sys.stderr)
         return True
     from ..auth import AuthRequiredError, ensure_live_auth
     try:
@@ -531,20 +532,20 @@ def _print_create_config(*, idea, pdf, backend_name, auth_label, model, run_dir,
     """Show the full effective configuration before spending anything, so the
     run is never an opaque idle."""
     budget = f"${max_budget_usd:.2f} per phase" if max_budget_usd else "no cap"
-    print("autocodabench plan-build-validate — configuration")
-    print(f"  idea:        {textwrap.shorten(idea, width=72) if idea else '(none)'}")
-    print(f"  proposal:    {pdf or '(none)'}")
-    print(f"  backend:     {backend_name}  ({auth_label})")
-    print(f"  model:       {model}")
-    print(f"  output dir:  {run_dir}")
-    print(f"  sample data: {data or '(none)'}")
-    print(f"  cost cap:    {budget}")
-    print(f"  output mode: {verbosity}")
-    print( "  pipeline:    1) plan → specs/implementation_plan.md")
-    print( "               2) build → bundle + zip (via the MCP tools)")
-    print(f"               3) validate → {'registered checks' if validate else 'skipped'}")
-    print(f"  artifacts:   plan, bundle, zip, and a full tool-call audit trail")
-    print(f"               land under the output dir above.")
+    print(style.heading("plan-build-validate — configuration"))
+    print(style.field("idea", textwrap.shorten(idea, width=72) if idea else "(none)"))
+    print(style.field("proposal", pdf or "(none)"))
+    print(style.field("backend", f"{backend_name}  ({auth_label})"))
+    print(style.field("model", model))
+    print(style.field("output dir", run_dir))
+    print(style.field("sample data", data or "(none)"))
+    print(style.field("cost cap", budget))
+    print(style.field("output mode", verbosity))
+    print(style.field("pipeline", "1) plan → specs/implementation_plan.md"))
+    print(style.cont("2) build → bundle + zip (via the MCP tools)"))
+    print(style.cont(f"3) validate → {'registered checks' if validate else 'skipped'}"))
+    print(style.field("artifacts", "plan, bundle, zip, and a full tool-call audit trail"))
+    print(style.cont("land under the output dir above."))
 
 
 def _cmd_create(args: argparse.Namespace) -> int:
@@ -654,7 +655,7 @@ def _cmd_create(args: argparse.Namespace) -> int:
             print("aborted (no run created)", file=sys.stderr)
             return 130
         try:
-            if input("\nStart the run? [Y/n]: ").strip().lower() not in ("", "y", "yes"):
+            if input("\n" + style.confirm("Start the run?")).strip().lower() not in ("", "y", "yes"):
                 return _abort()
         except (EOFError, KeyboardInterrupt):
             print(file=sys.stderr)
@@ -709,16 +710,16 @@ def _cmd_create(args: argparse.Namespace) -> int:
 def _print_plan_config(*, idea, pdf, backend_name, auth_label, model, run_dir,
                         data, max_budget_usd, verbosity) -> None:
     budget = f"${max_budget_usd:.2f}" if max_budget_usd else "no cap"
-    print("autocodabench plan — configuration")
-    print(f"  idea:        {textwrap.shorten(idea, width=72) if idea else '(none)'}")
-    print(f"  proposal:    {pdf or '(none)'}")
-    print(f"  backend:     {backend_name}  ({auth_label})")
-    print(f"  model:       {model}")
-    print(f"  output/run dir:  {run_dir}")
-    print(f"  sample data: {data or '(none)'}")
-    print(f"  cost cap:    {budget}")
-    print(f"  output mode: {verbosity}")
-    print( "  output:      specs/implementation_plan.md inside the run dir above")
+    print(style.heading("plan — configuration"))
+    print(style.field("idea", textwrap.shorten(idea, width=72) if idea else "(none)"))
+    print(style.field("proposal", pdf or "(none)"))
+    print(style.field("backend", f"{backend_name}  ({auth_label})"))
+    print(style.field("model", model))
+    print(style.field("output/run dir", run_dir))
+    print(style.field("sample data", data or "(none)"))
+    print(style.field("cost cap", budget))
+    print(style.field("output mode", verbosity))
+    print(style.field("output", "specs/implementation_plan.md inside the run dir above"))
 
 
 def _cmd_plan(args: argparse.Namespace) -> int:
@@ -780,7 +781,7 @@ def _cmd_plan(args: argparse.Namespace) -> int:
             print("aborted (no run created)", file=sys.stderr)
             return 130
         try:
-            if input("\nStart planning? [Y/n]: ").strip().lower() not in ("", "y", "yes"):
+            if input("\n" + style.confirm("Start planning?")).strip().lower() not in ("", "y", "yes"):
                 return _abort()
         except (EOFError, KeyboardInterrupt):
             print(file=sys.stderr)
@@ -822,17 +823,17 @@ def _cmd_plan(args: argparse.Namespace) -> int:
 def _print_bundle_config(*, plan_source, backend_name, auth_label, model,
                           run_dir, max_budget_usd, validate, verbosity) -> None:
     budget = f"${max_budget_usd:.2f}" if max_budget_usd else "no cap"
-    print("autocodabench build — configuration")
-    print(f"  plan:        {plan_source}")
-    print(f"  backend:     {backend_name}  ({auth_label})")
-    print(f"  model:       {model}")
-    print(f"  output/run dir:  {run_dir}")
-    print(f"  cost cap:    {budget}")
-    print(f"  output mode: {verbosity}")
-    print( "  pipeline:    1) build → bundle + zip (via the MCP tools)")
-    print(f"               2) validate → {'registered checks' if validate else 'skipped'}")
-    print( "  artifacts:   bundle, zip, and a full tool-call audit trail")
-    print( "               land under the output/run dir above.")
+    print(style.heading("build — configuration"))
+    print(style.field("plan", plan_source))
+    print(style.field("backend", f"{backend_name}  ({auth_label})"))
+    print(style.field("model", model))
+    print(style.field("output/run dir", run_dir))
+    print(style.field("cost cap", budget))
+    print(style.field("output mode", verbosity))
+    print(style.field("pipeline", "1) build → bundle + zip (via the MCP tools)"))
+    print(style.cont(f"2) validate → {'registered checks' if validate else 'skipped'}"))
+    print(style.field("artifacts", "bundle, zip, and a full tool-call audit trail"))
+    print(style.cont("land under the output/run dir above."))
 
 
 def _cmd_build(args: argparse.Namespace) -> int:
@@ -922,7 +923,7 @@ def _cmd_build(args: argparse.Namespace) -> int:
             print("aborted", file=sys.stderr)
             return 130
         try:
-            if input("\nStart building? [Y/n]: ").strip().lower() not in ("", "y", "yes"):
+            if input("\n" + style.confirm("Start building?")).strip().lower() not in ("", "y", "yes"):
                 return _abort()
         except (EOFError, KeyboardInterrupt):
             print(file=sys.stderr)
@@ -976,7 +977,7 @@ def _probe_active_auth(model: str | None) -> int:
               "Set one with `autocodabench auth use <subscription|api_key>`.",
               file=sys.stderr)
         return 1
-    print(f"\n{status.info_line()}")
+    print("\n" + style.info(status.info_line()))
     print(f"Verifying the agent SDK can authenticate via {status.effective} "
           "(one minimal live turn)…")
     outcome = asyncio.run(probe(model=model))
@@ -1292,6 +1293,12 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     from ..auth import load_dotenv
     load_dotenv()  # <cwd>/.env, if present; never overrides real env vars
+    # Brand banner to stderr (kept off stdout so JSON/piped output stays clean);
+    # empty unless stderr is a TTY. Printed before parsing so it also tops
+    # `--help` and usage errors.
+    _banner = style.banner()
+    if _banner:
+        print(_banner, file=sys.stderr)
     args = _build_parser().parse_args(argv)
     return args.func(args)
 
